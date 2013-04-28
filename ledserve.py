@@ -102,6 +102,13 @@ class MyTCPHandler(SocketServer.StreamRequestHandler):
         print "STATUS"
         self.wfile.write("lastc: %s, on %d\n" % (lastc, on))
         continue
+      m=re.match('^KNIGHTRIDER( [0-9]+\.[0-9]+)?$',line)
+      if m!=None:
+	print "KNIGHTRIDER %s" % (m.group(1))
+	t = self._parse_time(m.group(1), 20.0)
+	self.wfile.write("OK\n")
+	self.pa.knight_rider(t)
+	continue
 
 dev = "/dev/spidev0.0"
 spidev = file(dev, "wb")
