@@ -16,6 +16,24 @@ class PixArray:
     self.spi_dev.write(self.pix_val)
     self.spi_dev.flush()
 
+  def set_alternate(self, num, div, r1, g1, b1, r2, g2, b2):
+    tot_set=0
+    should_set=0
+    for x in range(self.num_pixels):
+      should_set+=num
+      e1=abs((tot_set+div)-should_set)
+      e2=abs(tot_set-should_set)
+      if e1<e2:
+        tot_set+=div
+        self.pix_val[x*3] = 0x80 | g1
+        self.pix_val[x*3+1] = 0x80 | r1
+        self.pix_val[x*3+2] = 0x80 | b1
+      else:
+        self.pix_val[x*3] = 0x80 | g2
+        self.pix_val[x*3+1] = 0x80 | r2
+        self.pix_val[x*3+2] = 0x80 | b2
+    self._write()
+
   def set_all(self, r, g, b):
     for x in range(self.num_pixels):
       self.pix_val[x*3] = 0x80 | g
