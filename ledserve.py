@@ -15,6 +15,7 @@ class MyTCPHandler(SocketServer.StreamRequestHandler):
     return (r, g, b)
   
   def _process_color(self, color_str):
+    global lastc, on
     lastc=color_str
     if color_str=="000000":
       on=False
@@ -90,6 +91,16 @@ class MyTCPHandler(SocketServer.StreamRequestHandler):
           self.wfile.write("1\n")
         else:
           self.wfile.write("0\n")
+        continue
+      m=re.match('^COLOUR$',line)
+      if m!=None:
+        print "COLOUR"
+        self.wfile.write("%s\n" % (lastc))
+        continue
+      m=re.match('^STATUS$',line)
+      if m!=None:
+        print "STATUS"
+        self.wfile.write("lastc: %s, on %d\n" % (lastc, on))
         continue
 
 dev = "/dev/spidev0.0"
