@@ -8,6 +8,7 @@ import "time"
 type Effect interface {
 	Start(pa *pixarray.PixArray)
 	NextStep(pa *pixarray.PixArray) time.Duration
+	Name() string
 }
 
 func abs(i int) int {
@@ -191,7 +192,7 @@ func (f *Fade) NextStep(pa *pixarray.PixArray) time.Duration {
 			nbp = 1.1
 		}
 		minNext := min(nrp, ngp, nbp)
-		if minNext==1.1 {
+		if minNext == 1.1 {
 			return f.timeStep
 		}
 		pctThroughStep := (pct - maxThis) / (minNext - maxThis)
@@ -229,13 +230,17 @@ func (f *Fade) NextStep(pa *pixarray.PixArray) time.Duration {
 	return f.timeStep
 }
 
+func (f *Fade) Name() string {
+	return "FADE"
+}
+
 // A full cycle goes across 128*6=768 steps: R->R+G->G->G+B->B->B+R->R with each of the six arrows
 // representing the 128 increments between 127 and 0 inclusive of the relevant increase or decrease.
 type Cycle struct {
 	cycleTime time.Duration
-	start time.Time
-	last pixarray.Pixel
-	fade *Fade
+	start     time.Time
+	last      pixarray.Pixel
+	fade      *Fade
 }
 
 func NewCycle(cycleTime time.Duration) *Cycle {
@@ -279,36 +284,37 @@ func (c *Cycle) Start(pa *pixarray.PixArray) {
 		panic("One of the three colours must ==m")
 	}
 	log.Printf("First fade to %v", c.last)
-	c.fade = NewFade(c.cycleTime / time.Duration(6), c.last)
+	c.fade = NewFade(c.cycleTime/time.Duration(30), c.last)
+	c.fade.Start(pa)
 }
 
 func (c *Cycle) NextStep(pa *pixarray.PixArray) time.Duration {
 	t := c.fade.NextStep(pa)
-	if t!=0 {
+	if t != 0 {
 		// This fade will continue
 		return t
 	}
 	// Time for a new fade
-	if c.last.R==127 {
-		if c.last.B>0 {
+	if c.last.R == 127 {
+		if c.last.B > 0 {
 			c.last.B--
-		} else if c.last.G==127 {
+		} else if c.last.G == 127 {
 			c.last.R--
 		} else {
 			c.last.G++
 		}
-	} else if c.last.G==127 {
-		if c.last.R>0 {
+	} else if c.last.G == 127 {
+		if c.last.R > 0 {
 			c.last.R--
-		} else if c.last.B==127 {
+		} else if c.last.B == 127 {
 			c.last.G--
 		} else {
 			c.last.B++
 		}
-	} else if c.last.B==127 {
-		if c.last.G>0 {
+	} else if c.last.B == 127 {
+		if c.last.G > 0 {
 			c.last.G--
-		} else if c.last.R==127 {
+		} else if c.last.R == 127 {
 			c.last.B--
 		} else {
 			c.last.R++
@@ -316,9 +322,13 @@ func (c *Cycle) NextStep(pa *pixarray.PixArray) time.Duration {
 	} else {
 		panic(fmt.Sprintf("Broken colour %v", c.last))
 	}
-	c.fade = NewFade(c.cycleTime / time.Duration(786), c.last)
+	c.fade = NewFade(c.cycleTime/time.Duration(786), c.last)
 	c.fade.Start(pa)
-	return c.cycleTime / time.Duration(786 * pa.NumPixels())
+	return c.cycleTime / time.Duration(786*pa.NumPixels())
+}
+
+func (f *Cycle) Name() string {
+	return "CYCLE"
 }
 
 type Zip struct {
@@ -350,6 +360,10 @@ func (z *Zip) NextStep(pa *pixarray.PixArray) time.Duration {
 		return 0
 	}
 	return time.Duration(z.zipTime.Nanoseconds() / int64(pa.NumPixels()))
+}
+
+func (f *Zip) Name() string {
+	return "ZIP"
 }
 
 type KnightRider struct {
@@ -401,4 +415,8 @@ func (kr *KnightRider) NextStep(pa *pixarray.PixArray) time.Duration {
 		pa.SetOne(i, pixarray.Pixel{v, 0, 0})
 	}
 	return time.Millisecond
+}
+
+func (f *KnightRider) Name() string {
+	return "KNIGHTRIDER"
 }

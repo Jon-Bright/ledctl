@@ -12,10 +12,12 @@ import "strings"
 import "time"
 
 type Server struct {
-	pa    *pixarray.PixArray
-	l     net.Listener
-	c     chan effects.Effect
-	laste effects.Effect
+	pa      *pixarray.PixArray
+	l       net.Listener
+	c       chan effects.Effect
+	laste   effects.Effect
+	off     bool
+	running bool
 }
 
 func NewServer(port int, pa *pixarray.PixArray) (*Server, error) {
@@ -26,7 +28,7 @@ func NewServer(port int, pa *pixarray.PixArray) (*Server, error) {
 	}
 	c := make(chan effects.Effect)
 	log.Printf("Listening on port %d", port)
-	return &Server{pa, l, c, nil}, nil
+	return &Server{pa, l, c, nil, true, false}, nil
 }
 
 func parseDuration(parms string) (string, time.Duration, error) {
@@ -106,14 +108,40 @@ func (s *Server) createEffect(cmd, parms string, w *bufio.Writer) (effects.Effec
 		w.WriteString(c)
 		err := w.Flush()
 		return nil, err
+	case cmd == "MODE":
+		n := "CONST"
+		if s.off {
+			n = "OFF"
+		} else if s.running {
+			if s.laste == nil {
+				return nil, fmt.Errorf("s running, but laste nil!")
+			}
+			n = s.laste.Name()
+		}
+		log.Printf("Mode '%s'", n)
+		if parms == "" {
+			log.Printf("Returning %s", n)
+			w.WriteString(n + "\n")
+			err := w.Flush()
+			return nil, err
+		}
+		r := "0\n"
+		if parms == n {
+			r = "1\n"
+		}
+		log.Printf("Returning %s", r)
+		w.WriteString(r)
+		err := w.Flush()
+		return nil, err
 	case cmd == "ON":
 		return s.laste, nil
 	case cmd == "OFF":
 		// Hack: we insert this directly into the channel because we don't want to overwrite whatever the last effect was
 		fb := effects.NewFade(10*time.Second, pixarray.Pixel{0, 0, 0})
+		s.off = true
 		s.c <- fb
 		return nil, nil
-	case cmd == "KNIGHT_RIDER":
+	case cmd == "KNIGHTRIDER":
 		_, d, err := parseDuration(parms)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing duration: %v", err)
@@ -143,6 +171,7 @@ func (s *Server) runEffects() {
 		}
 		if e != laste {
 			e.Start(s.pa)
+			s.running = true
 			steps = 0
 		}
 		d = e.NextStep(s.pa)
@@ -152,6 +181,7 @@ func (s *Server) runEffects() {
 			log.Printf("Finished effect, %d steps", steps)
 			laste = nil
 			e = nil
+			s.running = false
 		} else {
 			laste = e
 		}
@@ -205,6 +235,7 @@ func (s *Server) handleConnection(c net.Conn) {
 			}
 			s.c <- e
 			s.laste = e
+			s.off = false
 		}
 	}
 }

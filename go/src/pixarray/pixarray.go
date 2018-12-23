@@ -1,7 +1,10 @@
 package pixarray
 
 import "fmt"
+//import "encoding/hex"
 import "os"
+import "syscall"
+import "unsafe"
 
 func abs(i int) int {
 	if i >= 0 {
@@ -32,12 +35,34 @@ func NewPixArray(dev *os.File, numPixels int) (*PixArray, error) {
 	val := make([]byte, numPixels*3+numReset)
 	pa := PixArray{dev, numPixels, val, val[:numPixels*3]}
 
+	err := pa.setSPISpeed(1000000)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't set SPI speed: %v", err)
+	}
+	
 	firstReset := make([]byte, numReset)
-	_, err := dev.Write(firstReset)
+	_, err = dev.Write(firstReset)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't reset: %v", err)
 	}
 	return &pa, nil
+}
+
+const (
+	_SPI_IOC_WR_MAX_SPEED_HZ = 0x40046B04
+)
+
+func (pa *PixArray) setSPISpeed(s uint32) (error) {
+	_, _, errno := syscall.Syscall(
+		syscall.SYS_IOCTL,
+		uintptr(pa.dev.Fd()),
+		uintptr(_SPI_IOC_WR_MAX_SPEED_HZ),
+		uintptr(unsafe.Pointer(&s)),
+	)
+	if errno==0 {
+		return nil
+	}
+	return errno
 }
 
 func (pa *PixArray) Write() error {
