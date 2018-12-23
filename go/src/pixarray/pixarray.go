@@ -1,6 +1,7 @@
 package pixarray
 
 import "fmt"
+
 //import "encoding/hex"
 import "os"
 import "syscall"
@@ -39,7 +40,7 @@ func NewPixArray(dev *os.File, numPixels int) (*PixArray, error) {
 	if err != nil {
 		return nil, fmt.Errorf("couldn't set SPI speed: %v", err)
 	}
-	
+
 	firstReset := make([]byte, numReset)
 	_, err = dev.Write(firstReset)
 	if err != nil {
@@ -52,14 +53,14 @@ const (
 	_SPI_IOC_WR_MAX_SPEED_HZ = 0x40046B04
 )
 
-func (pa *PixArray) setSPISpeed(s uint32) (error) {
+func (pa *PixArray) setSPISpeed(s uint32) error {
 	_, _, errno := syscall.Syscall(
 		syscall.SYS_IOCTL,
 		uintptr(pa.dev.Fd()),
 		uintptr(_SPI_IOC_WR_MAX_SPEED_HZ),
 		uintptr(unsafe.Pointer(&s)),
 	)
-	if errno==0 {
+	if errno == 0 {
 		return nil
 	}
 	return errno
@@ -92,7 +93,7 @@ func (pa *PixArray) GetPixels() []Pixel {
 }
 
 func (pa *PixArray) GetPixel(i int) Pixel {
-	return Pixel{int(pa.pixels[i*3+1])&0x7f, int(pa.pixels[i*3])&0x7f, int(pa.pixels[i*3+2])&0x7f}
+	return Pixel{int(pa.pixels[i*3+1]) & 0x7f, int(pa.pixels[i*3]) & 0x7f, int(pa.pixels[i*3+2]) & 0x7f}
 }
 
 func (pa *PixArray) SetAlternate(num int, div int, p1 Pixel, p2 Pixel) {
