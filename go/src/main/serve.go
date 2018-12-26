@@ -17,6 +17,7 @@ import (
 var dev = flag.String("dev", "/dev/spidev0.0", "The SPI device on which the LEDs are connected")
 var port = flag.Int("port", 24601, "The port that the server should listen to")
 var pixels = flag.Int("pixels", 5*32, "The number of pixels to be controlled")
+var spiSpeed = flag.Uint("spispeed", 1000000, "The speed to send data via SPI, in Hz")
 
 type Server struct {
 	pa      *pixarray.PixArray
@@ -259,11 +260,12 @@ func (s *Server) handleConnections() {
 }
 
 func main() {
+	flag.Parse()
 	dev, err := os.OpenFile(*dev, os.O_RDWR, os.ModePerm)
 	if err != nil {
 		log.Fatalf("Failed opening SPI: %v", err)
 	}
-	pa, err := pixarray.NewPixArray(dev, *pixels)
+	pa, err := pixarray.NewPixArray(dev, *pixels, uint32(*spiSpeed))
 	if err != nil {
 		log.Fatalf("Failed creating PixArray: %v", err)
 	}

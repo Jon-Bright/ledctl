@@ -1,11 +1,11 @@
 package pixarray
 
-import "fmt"
-
-//import "encoding/hex"
-import "os"
-import "syscall"
-import "unsafe"
+import (
+	"fmt"
+	"os"
+	"syscall"
+	"unsafe"
+)
 
 func abs(i int) int {
 	if i >= 0 {
@@ -31,12 +31,12 @@ type PixArray struct {
 	pixels    []byte
 }
 
-func NewPixArray(dev *os.File, numPixels int) (*PixArray, error) {
+func NewPixArray(dev *os.File, numPixels int, spiSpeed uint32) (*PixArray, error) {
 	numReset := (numPixels + 31) / 32
 	val := make([]byte, numPixels*3+numReset)
 	pa := PixArray{dev, numPixels, val, val[:numPixels*3]}
 
-	err := pa.setSPISpeed(1000000)
+	err := pa.setSPISpeed(spiSpeed)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't set SPI speed: %v", err)
 	}
