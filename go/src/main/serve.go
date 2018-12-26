@@ -265,7 +265,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed opening SPI: %v", err)
 	}
-	pa, err := pixarray.NewPixArray(dev, *pixels, uint32(*spiSpeed))
+	pa, err := pixarray.NewPixArray(dev, *pixels, uint32(*spiSpeed), pixarray.GRB)
 	if err != nil {
 		log.Fatalf("Failed creating PixArray: %v", err)
 	}

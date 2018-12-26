@@ -7,6 +7,24 @@ import (
 	"unsafe"
 )
 
+const (
+	GRB = iota
+	BRG
+	BGR
+	GBR
+	RGB
+	RBG
+)
+
+var offsets map[int][]int = map[int][]int{
+	GRB: {0, 1, 2},
+	BRG: {2, 1, 0},
+	BGR: {1, 2, 0},
+	GBR: {0, 2, 1},
+	RGB: {1, 0, 2},
+	RBG: {2, 0, 1},
+}
+
 func abs(i int) int {
 	if i >= 0 {
 		return i
@@ -29,12 +47,16 @@ type PixArray struct {
 	numPixels int
 	sendBytes []byte
 	pixels    []byte
+	g         int
+	r         int
+	b         int
 }
 
-func NewPixArray(dev *os.File, numPixels int, spiSpeed uint32) (*PixArray, error) {
+func NewPixArray(dev *os.File, numPixels int, spiSpeed uint32, order int) (*PixArray, error) {
 	numReset := (numPixels + 31) / 32
 	val := make([]byte, numPixels*3+numReset)
-	pa := PixArray{dev, numPixels, val, val[:numPixels*3]}
+	offsets := offsets[order]
+	pa := PixArray{dev, numPixels, val, val[:numPixels*3], offsets[0], offsets[1], offsets[2]}
 
 	err := pa.setSPISpeed(spiSpeed)
 	if err != nil {
@@ -68,8 +90,6 @@ func (pa *PixArray) setSPISpeed(s uint32) error {
 
 func (pa *PixArray) Write() error {
 	_, err := pa.dev.Write(pa.sendBytes)
-	//fmt.Printf("Wrote %d bytes\n", len(pa.sendBytes))
-	//fmt.Print(hex.Dump(pa.sendBytes))
 	return err
 }
 
@@ -81,11 +101,11 @@ func (pa *PixArray) GetPixels() []Pixel {
 	p := make([]Pixel, pa.numPixels)
 	for i, v := range pa.pixels {
 		switch i % 3 {
-		case 0:
+		case pa.g:
 			p[i/3].G = int(v) & 0x7f
-		case 1:
+		case pa.r:
 			p[i/3].R = int(v) & 0x7f
-		case 2:
+		case pa.b:
 			p[i/3].B = int(v) & 0x7f
 		}
 	}
@@ -93,7 +113,7 @@ func (pa *PixArray) GetPixels() []Pixel {
 }
 
 func (pa *PixArray) GetPixel(i int) Pixel {
-	return Pixel{int(pa.pixels[i*3+1]) & 0x7f, int(pa.pixels[i*3]) & 0x7f, int(pa.pixels[i*3+2]) & 0x7f}
+	return Pixel{int(pa.pixels[i*3+pa.r]) & 0x7f, int(pa.pixels[i*3+pa.g]) & 0x7f, int(pa.pixels[i*3+pa.b]) & 0x7f}
 }
 
 func (pa *PixArray) SetAlternate(num int, div int, p1 Pixel, p2 Pixel) {
@@ -105,27 +125,27 @@ func (pa *PixArray) SetAlternate(num int, div int, p1 Pixel, p2 Pixel) {
 		e2 := abs(totSet - shouldSet)
 		if e1 < e2 {
 			totSet += div
-			pa.pixels[i*3] = byte(0x80 | p2.G)
-			pa.pixels[i*3+1] = byte(0x80 | p2.R)
-			pa.pixels[i*3+2] = byte(0x80 | p2.B)
+			pa.pixels[i*3+pa.g] = byte(0x80 | p2.G)
+			pa.pixels[i*3+pa.r] = byte(0x80 | p2.R)
+			pa.pixels[i*3+pa.b] = byte(0x80 | p2.B)
 		} else {
-			pa.pixels[i*3] = byte(0x80 | p1.G)
-			pa.pixels[i*3+1] = byte(0x80 | p1.R)
-			pa.pixels[i*3+2] = byte(0x80 | p1.B)
+			pa.pixels[i*3+pa.g] = byte(0x80 | p1.G)
+			pa.pixels[i*3+pa.r] = byte(0x80 | p1.R)
+			pa.pixels[i*3+pa.b] = byte(0x80 | p1.B)
 		}
 	}
 }
 
 func (pa *PixArray) SetAll(p Pixel) {
 	for i := 0; i < pa.numPixels; i++ {
-		pa.pixels[i*3] = byte(0x80 | p.G)
-		pa.pixels[i*3+1] = byte(0x80 | p.R)
-		pa.pixels[i*3+2] = byte(0x80 | p.B)
+		pa.pixels[i*3+pa.g] = byte(0x80 | p.G)
+		pa.pixels[i*3+pa.r] = byte(0x80 | p.R)
+		pa.pixels[i*3+pa.b] = byte(0x80 | p.B)
 	}
 }
 
 func (pa *PixArray) SetOne(i int, p Pixel) {
-	pa.pixels[i*3] = byte(0x80 | p.G)
-	pa.pixels[i*3+1] = byte(0x80 | p.R)
-	pa.pixels[i*3+2] = byte(0x80 | p.B)
+	pa.pixels[i*3+pa.g] = byte(0x80 | p.G)
+	pa.pixels[i*3+pa.r] = byte(0x80 | p.R)
+	pa.pixels[i*3+pa.b] = byte(0x80 | p.B)
 }
