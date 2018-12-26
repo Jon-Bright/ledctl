@@ -1,15 +1,22 @@
 package main
 
-import "bufio"
-import "effects"
-import "fmt"
-import "io"
-import "log"
-import "net"
-import "os"
-import "pixarray"
-import "strings"
-import "time"
+import (
+	"bufio"
+	"effects"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"os"
+	"pixarray"
+	"strings"
+	"time"
+)
+
+var dev = flag.String("dev", "/dev/spidev0.0", "The SPI device on which the LEDs are connected")
+var port = flag.Int("port", 24601, "The port that the server should listen to")
+var pixels = flag.Int("pixels", 5*32, "The number of pixels to be controlled")
 
 type Server struct {
 	pa      *pixarray.PixArray
@@ -252,16 +259,16 @@ func (s *Server) handleConnections() {
 }
 
 func main() {
-	dev, err := os.OpenFile("/dev/spidev0.0", os.O_RDWR, os.ModePerm)
+	dev, err := os.OpenFile(*dev, os.O_RDWR, os.ModePerm)
 	if err != nil {
 		log.Fatalf("Failed opening SPI: %v", err)
 	}
-	pa, err := pixarray.NewPixArray(dev, 5*32)
+	pa, err := pixarray.NewPixArray(dev, *pixels)
 	if err != nil {
 		log.Fatalf("Failed creating PixArray: %v", err)
 	}
 
-	s, err := NewServer(24601, pa)
+	s, err := NewServer(*port, pa)
 	if err != nil {
 		log.Fatalf("Failed creating server: %v", err)
 	}
