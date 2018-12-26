@@ -16,6 +16,15 @@ const (
 	RBG
 )
 
+var StringOrders map[string]int = map[string]int{
+	"GRB": GRB,
+	"BRG": BRG,
+	"BGR": BGR,
+	"GBR": GBR,
+	"RGB": RGB,
+	"RBG": RBG,
+}
+
 var offsets map[int][]int = map[int][]int{
 	GRB: {0, 1, 2},
 	BRG: {2, 1, 0},
