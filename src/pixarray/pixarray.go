@@ -152,6 +152,40 @@ func (pa *PixArray) SetAlternate(num int, div int, p1 Pixel, p2 Pixel) {
 	}
 }
 
+func (pa *PixArray) SetPerChanAlternate(num Pixel, div int, p1 Pixel, p2 Pixel) {
+	totSet := Pixel{}
+	shouldSet := Pixel{}
+	for i := 0; i < pa.numPixels; i++ {
+		shouldSet.R += num.R
+		e1 := abs((totSet.R + div) - shouldSet.R)
+		e2 := abs(totSet.R - shouldSet.R)
+		if e1 < e2 {
+			totSet.R += div
+			pa.pixels[i*3+pa.r] = byte(0x80 | p2.R)
+		} else {
+			pa.pixels[i*3+pa.r] = byte(0x80 | p1.R)
+		}
+		shouldSet.G += num.G
+		e1 = abs((totSet.G + div) - shouldSet.G)
+		e2 = abs(totSet.G - shouldSet.G)
+		if e1 < e2 {
+			totSet.G += div
+			pa.pixels[i*3+pa.g] = byte(0x80 | p2.G)
+		} else {
+			pa.pixels[i*3+pa.g] = byte(0x80 | p1.G)
+		}
+		shouldSet.B += num.B
+		e1 = abs((totSet.B + div) - shouldSet.B)
+		e2 = abs(totSet.B - shouldSet.B)
+		if e1 < e2 {
+			totSet.B += div
+			pa.pixels[i*3+pa.b] = byte(0x80 | p2.B)
+		} else {
+			pa.pixels[i*3+pa.b] = byte(0x80 | p1.B)
+		}
+	}
+}
+
 func (pa *PixArray) SetAll(p Pixel) {
 	for i := 0; i < pa.numPixels; i++ {
 		pa.pixels[i*3+pa.g] = byte(0x80 | p.G)

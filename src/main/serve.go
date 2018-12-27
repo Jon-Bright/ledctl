@@ -164,6 +164,7 @@ func (s *Server) runEffects() {
 	var laste, e effects.Effect
 	var d time.Duration
 	var steps int
+	var start time.Time
 	for {
 		if d == 0 {
 			e = <-s.c
@@ -179,15 +180,18 @@ func (s *Server) runEffects() {
 			log.Fatalf("Ready to process effect, but no effect!")
 		}
 		if e != laste {
-			e.Start(s.pa)
+			start = time.Now()
+			e.Start(s.pa, start)
 			s.running = true
 			steps = 0
 		}
-		d = e.NextStep(s.pa)
+		d = e.NextStep(s.pa, time.Now())
 		steps++
 		s.pa.Write()
 		if d == 0 {
-			log.Printf("Finished effect, %d steps", steps)
+			d:=time.Since(start)
+			ps:=time.Duration(d.Nanoseconds()/int64(steps))
+			log.Printf("Finished effect, %d steps, %s total, %s/step", steps, d, ps)
 			laste = nil
 			e = nil
 			s.running = false

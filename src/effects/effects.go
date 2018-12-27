@@ -6,8 +6,8 @@ import "pixarray"
 import "time"
 
 type Effect interface {
-	Start(pa *pixarray.PixArray)
-	NextStep(pa *pixarray.PixArray) time.Duration
+	Start(pa *pixarray.PixArray, now time.Time)
+	NextStep(pa *pixarray.PixArray, now time.Time) time.Duration
 	Name() string
 }
 
@@ -100,7 +100,7 @@ func NewFade(fadeTime time.Duration, dest pixarray.Pixel) *Fade {
 	return &f
 }
 
-func (f *Fade) Start(pa *pixarray.PixArray) {
+func (f *Fade) Start(pa *pixarray.PixArray, now time.Time) {
 	log.Printf("Starting Fade, dest %v", f.dest)
 	var lastp pixarray.Pixel
 	f.allSame = true
@@ -136,11 +136,11 @@ func (f *Fade) Start(pa *pixarray.PixArray) {
 		f.timeStep = time.Duration(nsStep)
 	}
 	log.Printf("Fade md.R %d, md.G %d, md.B %d, timestep %v", maxdiff.R, maxdiff.G, maxdiff.B, f.timeStep)
-	f.start = time.Now()
+	f.start = now
 }
 
-func (f *Fade) NextStep(pa *pixarray.PixArray) time.Duration {
-	td := time.Since(f.start)
+func (f *Fade) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
+	td := now.Sub(f.start)
 	pct := float64(td.Nanoseconds()) / float64(f.fadeTime.Nanoseconds())
 	if pct >= 1.0 {
 		// We're done
@@ -169,7 +169,6 @@ func (f *Fade) NextStep(pa *pixarray.PixArray) time.Duration {
 		} else {
 			tbp = 0.0
 		}
-		maxThis := max(trp, tgp, tbp)
 		if f.diffs[0].R > 0 {
 			nrp = float64(this.R+1-f.startPix[0].R) / float64(f.diffs[0].R)
 		} else if f.diffs[0].R < 0 {
@@ -191,20 +190,30 @@ func (f *Fade) NextStep(pa *pixarray.PixArray) time.Duration {
 		} else {
 			nbp = 1.1
 		}
-		minNext := min(nrp, ngp, nbp)
-		if minNext == 1.1 {
+		if nrp+ngp+nbp > 3.25 {
+			log.Printf("Weird, no diffs for r,g,b")
 			return f.timeStep
 		}
-		pctThroughStep := (pct - maxThis) / (minNext - maxThis)
+		pctThroughStepR := (pct - trp) / (nrp - trp)
+		pctThroughStepG := (pct - tgp) / (ngp - tgp)
+		pctThroughStepB := (pct - tbp) / (nbp - tbp)
 		next = this
-		if minNext == nrp {
+		if f.diffs[0].R != 0 {
 			next.R = next.R + (f.diffs[0].R / abs(f.diffs[0].R))
-		} else if minNext == ngp {
+		}
+		if f.diffs[0].G != 0 {
 			next.G = next.G + (f.diffs[0].G / abs(f.diffs[0].G))
-		} else {
+		}
+		if f.diffs[0].B != 0 {
 			next.B = next.B + (f.diffs[0].B / abs(f.diffs[0].B))
 		}
-		pa.SetAlternate(int(float64(pa.NumPixels())*pctThroughStep), pa.NumPixels(), this, next)
+		np := float64(pa.NumPixels())
+		num := pixarray.Pixel{
+			int(np * pctThroughStepR),
+			int(np * pctThroughStepG),
+			int(np * pctThroughStepB),
+		}
+		pa.SetPerChanAlternate(num, pa.NumPixels(), this, next)
 		return f.timeStep
 	}
 
@@ -249,9 +258,9 @@ func NewCycle(cycleTime time.Duration) *Cycle {
 	return &c
 }
 
-func (c *Cycle) Start(pa *pixarray.PixArray) {
+func (c *Cycle) Start(pa *pixarray.PixArray, now time.Time) {
 	log.Printf("Starting Cycle")
-	c.start = time.Now()
+	c.start = now
 	c.last = pa.GetPixel(0)
 	m := maxP(c.last)
 	switch m {
@@ -285,11 +294,11 @@ func (c *Cycle) Start(pa *pixarray.PixArray) {
 	}
 	log.Printf("First fade to %v", c.last)
 	c.fade = NewFade(c.cycleTime/time.Duration(30), c.last)
-	c.fade.Start(pa)
+	c.fade.Start(pa, now)
 }
 
-func (c *Cycle) NextStep(pa *pixarray.PixArray) time.Duration {
-	t := c.fade.NextStep(pa)
+func (c *Cycle) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
+	t := c.fade.NextStep(pa, now)
 	if t != 0 {
 		// This fade will continue
 		return t
@@ -323,7 +332,7 @@ func (c *Cycle) NextStep(pa *pixarray.PixArray) time.Duration {
 		panic(fmt.Sprintf("Broken colour %v", c.last))
 	}
 	c.fade = NewFade(c.cycleTime/time.Duration(786), c.last)
-	c.fade.Start(pa)
+	c.fade.Start(pa, now)
 	return c.cycleTime / time.Duration(786*pa.NumPixels())
 }
 
@@ -346,13 +355,13 @@ func NewZip(zipTime time.Duration, dest pixarray.Pixel) *Zip {
 	return &z
 }
 
-func (z *Zip) Start(pa *pixarray.PixArray) {
+func (z *Zip) Start(pa *pixarray.PixArray, now time.Time) {
 	log.Printf("Starting Zip")
-	z.start = time.Now()
+	z.start = now
 }
 
-func (z *Zip) NextStep(pa *pixarray.PixArray) time.Duration {
-	p := int((float64(time.Since(z.start).Nanoseconds()) / float64(z.zipTime.Nanoseconds())) * float64(pa.NumPixels()))
+func (z *Zip) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
+	p := int((float64(now.Sub(z.start).Nanoseconds()) / float64(z.zipTime.Nanoseconds())) * float64(pa.NumPixels()))
 	for i := z.lastSet + 1; i < pa.NumPixels() && i <= p; i++ {
 		pa.SetOne(i, z.dest)
 	}
@@ -379,15 +388,15 @@ func NewKnightRider(pulseTime time.Duration, pulseLen int) *KnightRider {
 	return &kr
 }
 
-func (kr *KnightRider) Start(pa *pixarray.PixArray) {
+func (kr *KnightRider) Start(pa *pixarray.PixArray, now time.Time) {
 	log.Printf("Starting KnightRider")
-	kr.start = time.Now()
+	kr.start = now
 	pa.SetAll(pixarray.Pixel{0, 0, 0})
 }
 
-func (kr *KnightRider) NextStep(pa *pixarray.PixArray) time.Duration {
-	pulse := time.Since(kr.start).Nanoseconds() / kr.pulseTime.Nanoseconds()
-	pulseProgress := float64(time.Since(kr.start).Nanoseconds()-(pulse*kr.pulseTime.Nanoseconds())) / float64(kr.pulseTime.Nanoseconds())
+func (kr *KnightRider) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
+	pulse := now.Sub(kr.start).Nanoseconds() / kr.pulseTime.Nanoseconds()
+	pulseProgress := float64(now.Sub(kr.start).Nanoseconds()-(pulse*kr.pulseTime.Nanoseconds())) / float64(kr.pulseTime.Nanoseconds())
 	pulseHead := int(float64(pa.NumPixels()+kr.pulseLen) * pulseProgress)
 	pulseDir := 0
 	if pulse%2 == 0 {
