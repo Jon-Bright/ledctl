@@ -226,7 +226,7 @@ func (s *Server) handleConnection(c net.Conn) {
 		e, err := s.createEffect(cmd, parms, w)
 		if err != nil {
 			es := fmt.Sprintf("Error creating effect: %v", err)
-			log.Printf(es)
+			log.Print(es)
 			w.WriteString("ERR: " + es + "\n")
 			err = w.Flush()
 			if err != nil {
