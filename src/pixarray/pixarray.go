@@ -2,7 +2,6 @@ package pixarray
 
 import (
 	"fmt"
-	"os"
 	"syscall"
 	"unsafe"
 )
@@ -51,8 +50,14 @@ func (p *Pixel) String() string {
 	return fmt.Sprintf("%02x%02x%02x", p.R, p.G, p.B)
 }
 
+// This is satisfied by os.File, but this minimal interface makes testing easier
+type dev interface {
+	Fd() uintptr
+	Write(b []byte) (n int, err error)
+}
+
 type PixArray struct {
-	dev       *os.File
+	dev       dev
 	numPixels int
 	sendBytes []byte
 	pixels    []byte
@@ -61,19 +66,21 @@ type PixArray struct {
 	b         int
 }
 
-func NewPixArray(dev *os.File, numPixels int, spiSpeed uint32, order int) (*PixArray, error) {
+func NewPixArray(dev dev, numPixels int, spiSpeed uint32, order int) (*PixArray, error) {
 	numReset := (numPixels + 31) / 32
 	val := make([]byte, numPixels*3+numReset)
 	offsets := offsets[order]
 	pa := PixArray{dev, numPixels, val, val[:numPixels*3], offsets[0], offsets[1], offsets[2]}
 
-	err := pa.setSPISpeed(spiSpeed)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't set SPI speed: %v", err)
+	if spiSpeed != 0 {
+		err := pa.setSPISpeed(spiSpeed)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't set SPI speed: %v", err)
+		}
 	}
 
 	firstReset := make([]byte, numReset)
-	_, err = dev.Write(firstReset)
+	_, err := dev.Write(firstReset)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't reset: %v", err)
 	}
