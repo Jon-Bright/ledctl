@@ -14,7 +14,7 @@ echo -e 'ZIP_SET_ALL 7f0000 5.0\nQUIT' |nc localhost 24601
 
 Once started, the server opens the specified port and listens for connections. It recognizes the plain text commands listed below.  There are two parameters that appear repeatedly:
 
-*colour* is a six digit hex-encoded RGB colour.  Each channel may be at most 127.  `7f7f7f` would therefore represent white, `7f0000' would be bright red, `000001` would be the dimmest possible green.
+*colour* is a six digit hex-encoded RGB colour.  Each channel may be at most 127.  `7f7f7f` would therefore represent white, `7f0000` would be bright red, `000001` would be the dimmest possible green.
 
 *duration* is a duration for the effect, in decimal seconds.  `1.0` is exactly one second, `2.5` is two-and-a-half seconds.
 
@@ -88,7 +88,7 @@ Simulates the light-strip effect from Kitt, the car in the 1980s TV series "Knig
 
 ## Disclaimer
 
-I am not associated in any way with NBC, David Hasselhoff or the creators of Knight Rider.
+I am not associated in any way with NBC, David Hasselhoff or the creators of Knight Rider. Especially David Hasselhoff.
 
 ## Author
 
