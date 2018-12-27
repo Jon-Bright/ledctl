@@ -1,9 +1,12 @@
 package effects
 
-import "fmt"
-import "log"
-import "pixarray"
-import "time"
+import (
+	"fmt"
+	"log"
+	"math"
+	"pixarray"
+	"time"
+)
 
 type Effect interface {
 	Start(pa *pixarray.PixArray, now time.Time)
@@ -16,6 +19,13 @@ func abs(i int) int {
 		return i
 	}
 	return -i
+}
+
+func round(f float64) int {
+	if f < 0 {
+		return int(f - 0.5)
+	}
+	return int(f + 0.5)
 }
 
 func maxP(p pixarray.Pixel) int {
@@ -241,6 +251,59 @@ func (f *Fade) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 
 func (f *Fade) Name() string {
 	return "FADE"
+}
+
+type Rainbow struct {
+	cycleTime time.Duration
+	start     time.Time
+}
+
+func NewRainbow(cycleTime time.Duration) *Rainbow {
+	r := Rainbow{}
+	r.cycleTime = cycleTime
+	return &r
+}
+
+func (r *Rainbow) Start(pa *pixarray.PixArray, now time.Time) {
+	log.Printf("Starting Rainbow")
+	r.start = now
+}
+
+func fToPix(f float64, o float64) int {
+	f -= o
+	if f < 0.0 {
+		f += 1.0
+	}
+	if f < 0.166667 {
+		return 127
+	}
+	if f < 0.333334 {
+		return 127 - round(127*((f-0.166667)/0.166667))
+	}
+	if f > 0.833333 {
+		return round(127 * ((f - 0.833333) / 0.166667))
+	}
+	return 0
+}
+
+func (r *Rainbow) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
+	pos := float64(now.Sub(r.start).Nanoseconds()) / float64(r.cycleTime.Nanoseconds())
+	pos -= math.Floor(pos)
+	offs := round(float64(pa.NumPixels()) * pos)
+
+	for i := 0; i < pa.NumPixels(); i++ {
+		var p pixarray.Pixel
+		f := float64(i) / float64(pa.NumPixels())
+		p.R = fToPix(f, 0.0)
+		p.G = fToPix(f, 0.333334)
+		p.B = fToPix(f, 0.666667)
+		pa.SetOne((i+offs)%pa.NumPixels(), p)
+	}
+	return r.cycleTime / time.Duration(768)
+}
+
+func (r *Rainbow) Name() string {
+	return "RAINBOW"
 }
 
 // A full cycle goes across 128*6=768 steps: R->R+G->G->G+B->B->B+R->R with each of the six arrows

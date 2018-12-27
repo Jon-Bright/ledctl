@@ -99,6 +99,12 @@ func (s *Server) createEffect(cmd, parms string, w *bufio.Writer) (effects.Effec
 			return nil, fmt.Errorf("error parsing duration: %v", err)
 		}
 		return effects.NewCycle(d), nil
+	case cmd == "RAINBOW":
+		_, d, err := parseDuration(parms)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing duration: %v", err)
+		}
+		return effects.NewRainbow(d), nil
 	case cmd == "GET":
 		for _, p := range s.pa.GetPixels() {
 			if p.R != 0 || p.G != 0 || p.B != 0 {
@@ -189,8 +195,8 @@ func (s *Server) runEffects() {
 		steps++
 		s.pa.Write()
 		if d == 0 {
-			d:=time.Since(start)
-			ps:=time.Duration(d.Nanoseconds()/int64(steps))
+			d := time.Since(start)
+			ps := time.Duration(d.Nanoseconds() / int64(steps))
 			log.Printf("Finished effect, %d steps, %s total, %s/step", steps, d, ps)
 			laste = nil
 			e = nil

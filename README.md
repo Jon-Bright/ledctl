@@ -38,7 +38,15 @@ Returns `OK`
 CYCLE <duration>
 ```
 
-Cycles all LEDs through a cycle from Red to Yellow (Red+Green) to Green to Cyan (Green+Blue) to Blue to Purple (Blue+Red) to Red and so forth.  Note that each individual transition (e.g. from R 127, G 0 to R 127, G 1) is done as a fade.  Since fades will set alternate LEDs to achieve higher fidelity than the LEDs themselves can achieve, the overall effect is that a duration of 1800 (half an hour) or 3600 (an hour) can happily be given here - the colours will impercetibly change over time.
+Cycles all LEDs (i.e. all LEDs appear to be showing the same colour at any given time) through a cycle from Red to Yellow (Red+Green) to Green to Cyan (Green+Blue) to Blue to Purple (Blue+Red) to Red and so forth.  Note that each individual transition (e.g. from R 127, G 0 to R 127, G 1) is done as a fade.  Since fades will set alternate LEDs to achieve higher fidelity than the LEDs themselves can achieve, the overall effect is that a duration of 1800 (half an hour) or 3600 (an hour) can happily be given here - the colours will impercetibly change over time.
+
+Returns `OK`.
+
+```
+RAINBOW <duration>
+```
+
+Shows a rainbow across the LEDs - one end of the strip is red, progressing through green, blue back to red at the end of the strip.  Over the given duration, offsets the starting point of the rainbow so that it gradually moves along the strip.
 
 Returns `OK`.
 
