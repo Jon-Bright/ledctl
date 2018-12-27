@@ -247,6 +247,7 @@ func (f *Fade) Name() string {
 // representing the 128 increments between 127 and 0 inclusive of the relevant increase or decrease.
 type Cycle struct {
 	cycleTime time.Duration
+	fadeTime  time.Duration
 	start     time.Time
 	last      pixarray.Pixel
 	fade      *Fade
@@ -255,13 +256,15 @@ type Cycle struct {
 func NewCycle(cycleTime time.Duration) *Cycle {
 	c := Cycle{}
 	c.cycleTime = cycleTime
+	c.fadeTime = cycleTime / time.Duration(768)
 	return &c
 }
 
 func (c *Cycle) Start(pa *pixarray.PixArray, now time.Time) {
 	log.Printf("Starting Cycle")
 	c.start = now
-	c.last = pa.GetPixel(0)
+	p := pa.GetPixel(0)
+	c.last = p
 	m := maxP(c.last)
 	switch m {
 	case 0:
@@ -269,39 +272,64 @@ func (c *Cycle) Start(pa *pixarray.PixArray, now time.Time) {
 		log.Printf("Black->Red")
 		c.last.R = 127
 	case c.last.R:
-		// Red max, let's assume we're on an R->R+G cycle
-		log.Printf("Red->Red+Green")
-		if c.last.G != 127 {
-			c.last.R = 127
+		// Red max
+		c.last.R = 127
+		if c.last.G > c.last.B {
+			log.Printf("Red->Red+Green")
+			c.last.B = 0
+		} else {
+			log.Printf("Blue+Red->Red")
+			c.last.G = 0
 		}
-		c.last.B = 0
 	case c.last.G:
-		// Green max, let's assume we're on a G->G+B cycle
-		log.Printf("Green->Green+Blue")
-		if c.last.B != 127 {
-			c.last.G = 127
+		// Green max
+		c.last.G = 127
+		if c.last.B > c.last.R {
+			log.Printf("Green->Green+Blue")
+			c.last.R = 0
+		} else {
+			log.Printf("Red+Green->Green")
+			c.last.B = 0
 		}
-		c.last.R = 0
 	case c.last.B:
-		// Blue max, let's assume we're on a B->B+R cycle
-		log.Printf("Blue->Blue+Red")
-		if c.last.R != 127 {
-			c.last.B = 127
+		// Blue max
+		c.last.B = 127
+		if c.last.G > c.last.R {
+			log.Printf("Green+Blue->Blue")
+			c.last.R = 0
+		} else {
+			log.Printf("Blue->Blue+Red")
+			c.last.G = 0
 		}
-		c.last.G = 0
 	default:
 		panic("One of the three colours must ==m")
 	}
-	log.Printf("First fade to %v", c.last)
-	c.fade = NewFade(c.cycleTime/time.Duration(30), c.last)
-	c.fade.Start(pa, now)
+
+	if c.last != p {
+		p.R -= c.last.R
+		p.G -= c.last.G
+		p.B -= c.last.B
+		p.R = abs(p.R)
+		p.G = abs(p.G)
+		p.B = abs(p.B)
+		m = maxP(p)
+		t := c.fadeTime * time.Duration(m)
+		log.Printf("First fade to %v, max dist %d -> time %s", c.last, m, t)
+		c.fade = NewFade(t, c.last)
+		c.fade.Start(pa, now)
+	} else {
+		log.Printf("Already in-cycle, no initial fade needed")
+		c.NextStep(pa, now)
+	}
 }
 
 func (c *Cycle) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
-	t := c.fade.NextStep(pa, now)
-	if t != 0 {
-		// This fade will continue
-		return t
+	if c.fade != nil {
+		t := c.fade.NextStep(pa, now)
+		if t != 0 {
+			// This fade will continue
+			return t
+		}
 	}
 	// Time for a new fade
 	if c.last.R == 127 {
@@ -331,9 +359,9 @@ func (c *Cycle) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 	} else {
 		panic(fmt.Sprintf("Broken colour %v", c.last))
 	}
-	c.fade = NewFade(c.cycleTime/time.Duration(786), c.last)
+	c.fade = NewFade(c.fadeTime, c.last)
 	c.fade.Start(pa, now)
-	return c.cycleTime / time.Duration(786*pa.NumPixels())
+	return c.cycleTime / time.Duration(768*pa.NumPixels())
 }
 
 func (f *Cycle) Name() string {
