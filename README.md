@@ -1,6 +1,6 @@
 # ledctl
 
-A Go server to control SPI-controlled LEDs. Specifically, I made this to control an LPD8806 strip, but I assume that it would work with RGB 5050s too.
+A Go server to control SPI-controlled LEDs. Specifically, I made this to control an LPD8806 strip.
 
 ## Usage
 
