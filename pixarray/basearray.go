@@ -8,7 +8,7 @@ type baseArray struct {
 	b         int
 }
 
-func newBaseArray(numPixels int, pixels []byte, order int) (*baseArray) {
+func newBaseArray(numPixels int, pixels []byte, order int) *baseArray {
 	offsets := offsets[order]
 	ba := baseArray{numPixels, pixels, offsets[0], offsets[1], offsets[2]}
 	return &ba
@@ -57,7 +57,7 @@ func (ba *baseArray) SetAlternate(num int, div int, p1 Pixel, p2 Pixel) {
 	}
 }
 
-func (pa *baseArray) SetPerChanAlternate(num Pixel, div int, p1 Pixel, p2 Pixel) {
+func (ba *baseArray) SetPerChanAlternate(num Pixel, div int, p1 Pixel, p2 Pixel) {
 	totSet := Pixel{}
 	shouldSet := Pixel{}
 	for i := 0; i < ba.numPixels; i++ {
@@ -91,7 +91,7 @@ func (pa *baseArray) SetPerChanAlternate(num Pixel, div int, p1 Pixel, p2 Pixel)
 	}
 }
 
-func (pa *baseArray) SetAll(p Pixel) {
+func (ba *baseArray) SetAll(p Pixel) {
 	for i := 0; i < ba.numPixels; i++ {
 		ba.pixels[i*3+ba.g] = byte(0x80 | p.G)
 		ba.pixels[i*3+ba.r] = byte(0x80 | p.R)
@@ -99,7 +99,7 @@ func (pa *baseArray) SetAll(p Pixel) {
 	}
 }
 
-func (pa *baseArray) SetOne(i int, p Pixel) {
+func (ba *baseArray) SetOne(i int, p Pixel) {
 	ba.pixels[i*3+ba.g] = byte(0x80 | p.G)
 	ba.pixels[i*3+ba.r] = byte(0x80 | p.R)
 	ba.pixels[i*3+ba.b] = byte(0x80 | p.B)

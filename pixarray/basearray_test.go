@@ -4,22 +4,9 @@ import (
 	"testing"
 )
 
-type FakeLEDDev struct {
-}
-
-func (f *FakeLEDDev) Fd() uintptr {
-	return 0
-}
-
-func (f *FakeLEDDev) Write(b []byte) (n int, err error) {
-	return len(b), nil
-}
-
 func TestSetOneThenGetOneByOne(t *testing.T) {
-	pa, err := NewPixArray(&FakeLEDDev{}, 100, 0, GRB)
-	if err != nil {
-		t.Fatalf("Failed NewPixArray: %v", err)
-	}
+	pixels := make([]byte, 100*3)
+	pa := newBaseArray(100, pixels, GRB)
 	ps := Pixel{10, 25, 45}
 	pb := Pixel{0, 0, 0}
 	pa.SetOne(20, ps)
@@ -34,10 +21,8 @@ func TestSetOneThenGetOneByOne(t *testing.T) {
 }
 
 func TestSetOneThenGetAll(t *testing.T) {
-	pa, err := NewPixArray(&FakeLEDDev{}, 100, 0, GRB)
-	if err != nil {
-		t.Fatalf("Failed NewPixArray: %v", err)
-	}
+	pixels := make([]byte, 100*3)
+	pa := newBaseArray(100, pixels, GRB)
 	ps := Pixel{10, 25, 45}
 	pb := Pixel{0, 0, 0}
 	pa.SetOne(20, ps)
@@ -55,10 +40,8 @@ func TestSetOneThenGetAll(t *testing.T) {
 }
 
 func TestSetAlternate(t *testing.T) {
-	pa, err := NewPixArray(&FakeLEDDev{}, 100, 0, GRB)
-	if err != nil {
-		t.Fatalf("Failed NewPixArray: %v", err)
-	}
+	pixels := make([]byte, 100*3)
+	pa := newBaseArray(100, pixels, GRB)
 	p1 := Pixel{10, 25, 45}
 	p2 := Pixel{9, 7, 5}
 
@@ -126,10 +109,8 @@ func TestSetAlternate(t *testing.T) {
 }
 
 func TestSetPerChanAlternate(t *testing.T) {
-	pa, err := NewPixArray(&FakeLEDDev{}, 100, 0, GRB)
-	if err != nil {
-		t.Fatalf("Failed NewPixArray: %v", err)
-	}
+	pixels := make([]byte, 100*3)
+	pa := newBaseArray(100, pixels, GRB)
 	p1 := Pixel{10, 25, 45}
 	p2 := Pixel{9, 7, 5}
 
@@ -230,10 +211,8 @@ func TestSetPerChanAlternate(t *testing.T) {
 }
 
 func BenchmarkSetAlternate(b *testing.B) {
-	pa, err := NewPixArray(&FakeLEDDev{}, 100, 0, GRB)
-	if err != nil {
-		b.Fatalf("Failed NewPixArray: %v", err)
-	}
+	pixels := make([]byte, 100*3)
+	pa := newBaseArray(100, pixels, GRB)
 	p1 := Pixel{10, 25, 45}
 	p2 := Pixel{9, 7, 5}
 	for i := 0; i < b.N/2; i++ {
@@ -243,10 +222,8 @@ func BenchmarkSetAlternate(b *testing.B) {
 }
 
 func BenchmarkSetPerChanAlternate(b *testing.B) {
-	pa, err := NewPixArray(&FakeLEDDev{}, 100, 0, GRB)
-	if err != nil {
-		b.Fatalf("Failed NewPixArray: %v", err)
-	}
+	pixels := make([]byte, 100*3)
+	pa := newBaseArray(100, pixels, GRB)
 	p1 := Pixel{10, 25, 45}
 	p2 := Pixel{9, 7, 5}
 	s1 := Pixel{5, 1, 2}

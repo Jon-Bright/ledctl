@@ -2,26 +2,26 @@ package main
 
 import (
 	"bufio"
-	"effects"
 	"flag"
 	"fmt"
+	effects "github.com/Jon-Bright/ledctl/effects"
+	pixarray "github.com/Jon-Bright/ledctl/pixarray"
 	"io"
 	"log"
 	"net"
 	"os"
-	"pixarray"
 	"strings"
 	"time"
 )
 
-var dev = flag.String("dev", "/dev/spidev0.0", "The SPI device on which the LEDs are connected")
+var lpd8806dev = flag.String("dev", "/dev/spidev0.0", "The SPI device on which LPD8806 LEDs are connected")
+var lpd8806SpiSpeed = flag.Uint("spispeed", 1000000, "The speed to send data via SPI to LPD8806s, in Hz")
 var port = flag.Int("port", 24601, "The port that the server should listen to")
 var pixels = flag.Int("pixels", 5*32, "The number of pixels to be controlled")
-var spiSpeed = flag.Uint("spispeed", 1000000, "The speed to send data via SPI, in Hz")
-var pixelOrder = flag.String("order", "GRB", "The ordering of the pixels")
+var pixelOrder = flag.String("order", "GRB", "The color ordering of the pixels")
 
 type Server struct {
-	pa      *pixarray.PixArray
+	pa      pixarray.PixArray
 	l       net.Listener
 	c       chan effects.Effect
 	laste   effects.Effect
@@ -29,7 +29,7 @@ type Server struct {
 	running bool
 }
 
-func NewServer(port int, pa *pixarray.PixArray) (*Server, error) {
+func NewServer(port int, pa pixarray.PixArray) (*Server, error) {
 
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -272,12 +272,12 @@ func (s *Server) handleConnections() {
 
 func main() {
 	flag.Parse()
-	dev, err := os.OpenFile(*dev, os.O_RDWR, os.ModePerm)
+	dev, err := os.OpenFile(*lpd8806dev, os.O_RDWR, os.ModePerm)
 	if err != nil {
 		log.Fatalf("Failed opening SPI: %v", err)
 	}
 	order := pixarray.StringOrders[*pixelOrder]
-	pa, err := pixarray.NewPixArray(dev, *pixels, uint32(*spiSpeed), order)
+	pa, err := pixarray.NewLPD8806(dev, *pixels, uint32(*lpd8806SpiSpeed), order)
 	if err != nil {
 		log.Fatalf("Failed creating PixArray: %v", err)
 	}

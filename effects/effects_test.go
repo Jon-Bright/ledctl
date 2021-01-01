@@ -1,8 +1,8 @@
 package effects
 
 import (
+	pixarray "github.com/Jon-Bright/ledctl/pixarray"
 	"math"
-	"pixarray"
 	"testing"
 	"time"
 )
@@ -27,7 +27,7 @@ func d(s string, tb testing.TB) time.Duration {
 }
 
 func TestAllSameFade(t *testing.T) {
-	pa, err := pixarray.NewPixArray(&FakeLEDDev{}, 100, 0, pixarray.GRB)
+	pa, err := pixarray.NewLPD8806(&FakeLEDDev{}, 100, 0, pixarray.GRB)
 	if err != nil {
 		t.Fatalf("Failed NewPixArray: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestAllSameFade(t *testing.T) {
 }
 
 func BenchmarkFadeStep(b *testing.B) {
-	pa, err := pixarray.NewPixArray(&FakeLEDDev{}, 100, 0, pixarray.GRB)
+	pa, err := pixarray.NewLPD8806(&FakeLEDDev{}, 100, 0, pixarray.GRB)
 	if err != nil {
 		b.Fatalf("Failed NewPixArray: %v", err)
 	}
