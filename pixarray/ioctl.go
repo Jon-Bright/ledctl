@@ -1,7 +1,6 @@
 package pixarray
 
 import (
-	"fmt"
 	"reflect"
 	"syscall"
 	"unsafe"
@@ -28,7 +27,6 @@ const (
 )
 
 func ioc(dir uint32, typ uint32, nr uint32, size uint32) uint32 {
-	fmt.Printf("dir %v, size %v\n", dir, size)
 	return (((dir) << _IOC_DIRSHIFT) |
 		((typ) << _IOC_TYPESHIFT) |
 		((nr) << _IOC_NRSHIFT) |

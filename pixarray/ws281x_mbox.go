@@ -165,7 +165,83 @@ func (ws *WS281x) allocMem() (uintptr, error) {
 
 	err := ws.mboxProperty(p)
 	if err != nil {
-		return 0, fmt.Errorf("can't allocate videocore memory: %v", err)
+		return 0, fmt.Errorf("mboxProperty failed: %v", err)
 	}
-	return uintptr(p[5]), nil
+	if p[4]&0x80000000 == 0 {
+		return 0, fmt.Errorf("response tag unset: %v", p[4])
+	}
+	if p[5] == 0 {
+		return 0, fmt.Errorf("out of memory")
+	}
+	return uintptr(p[5]), nil // 5 is the same place as mboxSize above - first part of the tag value
+}
+
+func (ws *WS281x) freeMem(handle uintptr) error {
+	i := uint32(0)
+	p := make([]uint32, 32)
+	p[i] = 0 // size
+	i++
+	p[i] = 0x00000000 // process request
+	i++
+
+	p[i] = 0x3000f // tag ID for "free memory"
+	i++
+	p[i] = 4 // size of the tag value to follow
+	i++
+	p[i] = 0 // afaict, mailbox.c has this wrong, we just need bit 31 clear, rest is reserved
+	i++
+
+	// tag value
+	p[i] = uint32(handle) // handle of the allocated memory
+	i++
+
+	p[i] = 0 // no more tags
+	i++
+	p[0] = i * 4 // actual size of the tag
+
+	err := ws.mboxProperty(p)
+	if err != nil {
+		return fmt.Errorf("mboxProperty failed: %v", err)
+	}
+	if p[4]&0x80000000 == 0 {
+		return fmt.Errorf("response tag unset: %v", p[4])
+	}
+	if p[5] != 0 {
+		return fmt.Errorf("status non-zero: %v", p[5])
+	}
+	return nil
+}
+
+func (ws *WS281x) lockMem(handle uintptr) (uintptr, error) {
+	i := uint32(0)
+	p := make([]uint32, 32)
+	p[i] = 0 // size
+	i++
+	p[i] = 0x00000000 // process request
+	i++
+
+	p[i] = 0x3000d // tag ID for "lock memory"
+	i++
+	p[i] = 4 // size of the tag value to follow
+	i++
+	p[i] = 0 // afaict, mailbox.c has this wrong, we just need bit 31 clear, rest is reserved
+	i++
+
+	// tag value
+	p[i] = uint32(handle) // handle of the block we want to lock
+	i++
+
+	p[i] = 0 // no more tags
+	i++
+
+	p[0] = i * 4 // actual size of the tag
+
+	err := ws.mboxProperty(p)
+	if err != nil {
+		return 0, fmt.Errorf("mboxProperty failed: %v", err)
+	}
+	if p[4]&0x80000000 == 0 {
+		return 0, fmt.Errorf("response tag unset: %v", p[4])
+	}
+	return uintptr(p[5]), nil // 5 is the same place as handle above - first part of the tag value
 }

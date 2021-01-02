@@ -29,11 +29,18 @@ func NewWS281x(numPixels int, numColors int, order int, freq uint) (LEDStrip, er
 		return nil, fmt.Errorf("couldn't open mbox: %v", err)
 	}
 	wa.calcMboxSize(freq)
-	addr, err := wa.allocMem()
+	handle, err := wa.allocMem()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't allocMem: %v", err)
 	}
-	fmt.Printf("got addr %08X\n", addr)
+	fmt.Printf("got handle %08X\n", handle)
+	busAddr, err := wa.lockMem(handle)
+	if err != nil {
+		wa.freeMem(handle) // Ignore error
+		return nil, fmt.Errorf("couldn't lockMem: %v", err)
+	}
+	fmt.Printf("got busAddr %08X\n", busAddr)
+
 	return &wa, nil
 }
 
