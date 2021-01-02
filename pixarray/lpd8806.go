@@ -2,8 +2,6 @@ package pixarray
 
 import (
 	"fmt"
-	"syscall"
-	"unsafe"
 )
 
 type LPD8806Array struct {
@@ -35,19 +33,21 @@ func NewLPD8806(dev dev, numPixels int, spiSpeed uint32, order int) (PixArray, e
 
 const (
 	_SPI_IOC_WR_MAX_SPEED_HZ = 0x40046B04
+	SPI_IOC_MAGIC            = 'k'
 )
 
 func (la *LPD8806Array) setSPISpeed(s uint32) error {
-	_, _, errno := syscall.Syscall(
-		syscall.SYS_IOCTL,
-		uintptr(la.dev.Fd()),
-		uintptr(_SPI_IOC_WR_MAX_SPEED_HZ),
-		uintptr(unsafe.Pointer(&s)),
-	)
-	if errno == 0 {
-		return nil
-	}
-	return errno
+	return ioctlUint32(la.dev.Fd(), iow(SPI_IOC_MAGIC, 4, uintptr(0)), s)
+	//	_, _, errno := syscall.Syscall(
+	//		syscall.SYS_IOCTL,
+	//		uintptr(la.dev.Fd()),
+	//		uintptr(_SPI_IOC_WR_MAX_SPEED_HZ),
+	//		uintptr(unsafe.Pointer(&s)),
+	//	)
+	//	if errno == 0 {
+	//		return nil
+	//	}
+	//	return errno
 }
 
 func (la *LPD8806Array) Write() error {
