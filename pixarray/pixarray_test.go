@@ -4,9 +4,24 @@ import (
 	"testing"
 )
 
+type testLeds struct {
+	pixels []Pixel
+}
+
+func (l *testLeds) GetPixel(i int) Pixel {
+	return pixels[i]
+}
+
+func (l *testLeds) SetPixel(i int, p Pixel) {
+	pixels[i] = p
+}
+
+func newTestLeds(numPixels int) {
+	return &testLeds{make([]Pixel, numPixels)}
+}
+
 func TestSetOneThenGetOneByOne(t *testing.T) {
-	pixels := make([]byte, 100*3)
-	pa := newBaseArray(100, pixels, GRB)
+	pa := NewPixArray(100, 3, newTestLeds(100))
 	ps := Pixel{10, 25, 45}
 	pb := Pixel{0, 0, 0}
 	pa.SetOne(20, ps)
@@ -21,8 +36,7 @@ func TestSetOneThenGetOneByOne(t *testing.T) {
 }
 
 func TestSetOneThenGetAll(t *testing.T) {
-	pixels := make([]byte, 100*3)
-	pa := newBaseArray(100, pixels, GRB)
+	pa := NewPixArray(100, 3, newTestLeds(100))
 	ps := Pixel{10, 25, 45}
 	pb := Pixel{0, 0, 0}
 	pa.SetOne(20, ps)
@@ -40,8 +54,7 @@ func TestSetOneThenGetAll(t *testing.T) {
 }
 
 func TestSetAlternate(t *testing.T) {
-	pixels := make([]byte, 100*3)
-	pa := newBaseArray(100, pixels, GRB)
+	pa := NewPixArray(100, 3, newTestLeds(100))
 	p1 := Pixel{10, 25, 45}
 	p2 := Pixel{9, 7, 5}
 
@@ -109,8 +122,7 @@ func TestSetAlternate(t *testing.T) {
 }
 
 func TestSetPerChanAlternate(t *testing.T) {
-	pixels := make([]byte, 100*3)
-	pa := newBaseArray(100, pixels, GRB)
+	pa := NewPixArray(100, 3, newTestLeds(100))
 	p1 := Pixel{10, 25, 45}
 	p2 := Pixel{9, 7, 5}
 
@@ -211,8 +223,7 @@ func TestSetPerChanAlternate(t *testing.T) {
 }
 
 func BenchmarkSetAlternate(b *testing.B) {
-	pixels := make([]byte, 100*3)
-	pa := newBaseArray(100, pixels, GRB)
+	pa := NewPixArray(100, 3, newTestLeds(100))
 	p1 := Pixel{10, 25, 45}
 	p2 := Pixel{9, 7, 5}
 	for i := 0; i < b.N/2; i++ {
@@ -222,8 +233,7 @@ func BenchmarkSetAlternate(b *testing.B) {
 }
 
 func BenchmarkSetPerChanAlternate(b *testing.B) {
-	pixels := make([]byte, 100*3)
-	pa := newBaseArray(100, pixels, GRB)
+	pa := NewPixArray(100, 3, newTestLeds(100))
 	p1 := Pixel{10, 25, 45}
 	p2 := Pixel{9, 7, 5}
 	s1 := Pixel{5, 1, 2}

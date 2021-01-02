@@ -9,8 +9,8 @@ import (
 )
 
 type Effect interface {
-	Start(pa pixarray.PixArray, now time.Time)
-	NextStep(pa pixarray.PixArray, now time.Time) time.Duration
+	Start(pa *pixarray.PixArray, now time.Time)
+	NextStep(pa *pixarray.PixArray, now time.Time) time.Duration
 	Name() string
 }
 
@@ -31,12 +31,24 @@ func round(f float64) int {
 func maxP(p pixarray.Pixel) int {
 	if p.R < p.G {
 		if p.G < p.B {
+			if p.B < p.W {
+				return p.W
+			}
 			return p.B
+		}
+		if p.G < p.W {
+			return p.W
 		}
 		return p.G
 	}
 	if p.R < p.B {
+		if p.B < p.W {
+			return p.W
+		}
 		return p.B
+	}
+	if p.R < p.W {
+		return p.W
 	}
 	return p.R
 }
@@ -68,6 +80,7 @@ func min(a, b, c float64) float64 {
 }
 
 func lcm(p pixarray.Pixel) int {
+	// TODO: no white support
 	if p.R == 0 {
 		p.R = 1
 	}
@@ -110,7 +123,7 @@ func NewFade(fadeTime time.Duration, dest pixarray.Pixel) *Fade {
 	return &f
 }
 
-func (f *Fade) Start(pa pixarray.PixArray, now time.Time) {
+func (f *Fade) Start(pa *pixarray.PixArray, now time.Time) {
 	log.Printf("Starting Fade, dest %v", f.dest)
 	var lastp pixarray.Pixel
 	f.allSame = true
@@ -149,7 +162,8 @@ func (f *Fade) Start(pa pixarray.PixArray, now time.Time) {
 	f.start = now
 }
 
-func (f *Fade) NextStep(pa pixarray.PixArray, now time.Time) time.Duration {
+func (f *Fade) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
+	// TODO : no white support
 	td := now.Sub(f.start)
 	pct := float64(td.Nanoseconds()) / float64(f.fadeTime.Nanoseconds())
 	if pct >= 1.0 {
@@ -222,6 +236,7 @@ func (f *Fade) NextStep(pa pixarray.PixArray, now time.Time) time.Duration {
 			int(np * pctThroughStepR),
 			int(np * pctThroughStepG),
 			int(np * pctThroughStepB),
+			-1,
 		}
 		pa.SetPerChanAlternate(num, pa.NumPixels(), this, next)
 		return f.timeStep
@@ -264,7 +279,7 @@ func NewRainbow(cycleTime time.Duration) *Rainbow {
 	return &r
 }
 
-func (r *Rainbow) Start(pa pixarray.PixArray, now time.Time) {
+func (r *Rainbow) Start(pa *pixarray.PixArray, now time.Time) {
 	log.Printf("Starting Rainbow")
 	r.start = now
 }
@@ -286,7 +301,7 @@ func fToPix(f float64, o float64) int {
 	return 0
 }
 
-func (r *Rainbow) NextStep(pa pixarray.PixArray, now time.Time) time.Duration {
+func (r *Rainbow) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 	pos := float64(now.Sub(r.start).Nanoseconds()) / float64(r.cycleTime.Nanoseconds())
 	pos -= math.Floor(pos)
 	offs := round(float64(pa.NumPixels()) * pos)
@@ -323,7 +338,7 @@ func NewCycle(cycleTime time.Duration) *Cycle {
 	return &c
 }
 
-func (c *Cycle) Start(pa pixarray.PixArray, now time.Time) {
+func (c *Cycle) Start(pa *pixarray.PixArray, now time.Time) {
 	log.Printf("Starting Cycle")
 	c.start = now
 	p := pa.GetPixel(0)
@@ -386,7 +401,7 @@ func (c *Cycle) Start(pa pixarray.PixArray, now time.Time) {
 	}
 }
 
-func (c *Cycle) NextStep(pa pixarray.PixArray, now time.Time) time.Duration {
+func (c *Cycle) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 	if c.fade != nil {
 		t := c.fade.NextStep(pa, now)
 		if t != 0 {
@@ -446,12 +461,12 @@ func NewZip(zipTime time.Duration, dest pixarray.Pixel) *Zip {
 	return &z
 }
 
-func (z *Zip) Start(pa pixarray.PixArray, now time.Time) {
+func (z *Zip) Start(pa *pixarray.PixArray, now time.Time) {
 	log.Printf("Starting Zip")
 	z.start = now
 }
 
-func (z *Zip) NextStep(pa pixarray.PixArray, now time.Time) time.Duration {
+func (z *Zip) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 	p := int((float64(now.Sub(z.start).Nanoseconds()) / float64(z.zipTime.Nanoseconds())) * float64(pa.NumPixels()))
 	for i := z.lastSet + 1; i < pa.NumPixels() && i <= p; i++ {
 		pa.SetOne(i, z.dest)
@@ -479,13 +494,13 @@ func NewKnightRider(pulseTime time.Duration, pulseLen int) *KnightRider {
 	return &kr
 }
 
-func (kr *KnightRider) Start(pa pixarray.PixArray, now time.Time) {
+func (kr *KnightRider) Start(pa *pixarray.PixArray, now time.Time) {
 	log.Printf("Starting KnightRider")
 	kr.start = now
-	pa.SetAll(pixarray.Pixel{0, 0, 0})
+	pa.SetAll(pixarray.Pixel{0, 0, 0, 0})
 }
 
-func (kr *KnightRider) NextStep(pa pixarray.PixArray, now time.Time) time.Duration {
+func (kr *KnightRider) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 	pulse := now.Sub(kr.start).Nanoseconds() / kr.pulseTime.Nanoseconds()
 	pulseProgress := float64(now.Sub(kr.start).Nanoseconds()-(pulse*kr.pulseTime.Nanoseconds())) / float64(kr.pulseTime.Nanoseconds())
 	pulseHead := int(float64(pa.NumPixels()+kr.pulseLen) * pulseProgress)
@@ -512,7 +527,7 @@ func (kr *KnightRider) NextStep(pa pixarray.PixArray, now time.Time) time.Durati
 	}
 	for i := pulseTail; i != rangeHead; i = i + pulseDir {
 		v := int((float64(kr.pulseLen-abs(pulseHead-i))/float64(kr.pulseLen))*126.0) + 1
-		pa.SetOne(i, pixarray.Pixel{v, 0, 0})
+		pa.SetOne(i, pixarray.Pixel{v, 0, 0, 0})
 	}
 	return time.Millisecond
 }

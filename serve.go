@@ -16,12 +16,13 @@ import (
 
 var lpd8806dev = flag.String("dev", "/dev/spidev0.0", "The SPI device on which LPD8806 LEDs are connected")
 var lpd8806SpiSpeed = flag.Uint("spispeed", 1000000, "The speed to send data via SPI to LPD8806s, in Hz")
+var ledChip = flag.String("ledchip", "ws281x", "The type of LED strip to drive: one of ws281x, lpd8806")
 var port = flag.Int("port", 24601, "The port that the server should listen to")
 var pixels = flag.Int("pixels", 5*32, "The number of pixels to be controlled")
 var pixelOrder = flag.String("order", "GRB", "The color ordering of the pixels")
 
 type Server struct {
-	pa      pixarray.PixArray
+	pa      *pixarray.PixArray
 	l       net.Listener
 	c       chan effects.Effect
 	laste   effects.Effect
@@ -29,7 +30,7 @@ type Server struct {
 	running bool
 }
 
-func NewServer(port int, pa pixarray.PixArray) (*Server, error) {
+func NewServer(port int, pa *pixarray.PixArray) (*Server, error) {
 
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -117,6 +118,7 @@ func (s *Server) createEffect(cmd, parms string, w *bufio.Writer) (effects.Effec
 		err := w.Flush()
 		return nil, err
 	case cmd == "COLOUR":
+	case cmd == "COLOR":
 		p := s.pa.GetPixels()[0]
 		c := fmt.Sprintf("%02x%02x%02x\n", p.R, p.G, p.B)
 		log.Printf("Returning %s", c)
@@ -152,7 +154,7 @@ func (s *Server) createEffect(cmd, parms string, w *bufio.Writer) (effects.Effec
 		return s.laste, nil
 	case cmd == "OFF":
 		// Hack: we insert this directly into the channel because we don't want to overwrite whatever the last effect was
-		fb := effects.NewFade(10*time.Second, pixarray.Pixel{0, 0, 0})
+		fb := effects.NewFade(10*time.Second, pixarray.Pixel{0, 0, 0, 0})
 		s.off = true
 		s.c <- fb
 		return nil, nil
@@ -272,15 +274,28 @@ func (s *Server) handleConnections() {
 
 func main() {
 	flag.Parse()
-	dev, err := os.OpenFile(*lpd8806dev, os.O_RDWR, os.ModePerm)
-	if err != nil {
-		log.Fatalf("Failed opening SPI: %v", err)
-	}
 	order := pixarray.StringOrders[*pixelOrder]
-	pa, err := pixarray.NewLPD8806(dev, *pixels, uint32(*lpd8806SpiSpeed), order)
-	if err != nil {
-		log.Fatalf("Failed creating PixArray: %v", err)
+	var leds pixarray.LEDStrip
+	var err error
+	switch *ledChip {
+	case "lpd8806":
+		dev, err := os.OpenFile(*lpd8806dev, os.O_RDWR, os.ModePerm)
+		if err != nil {
+			log.Fatalf("Failed opening SPI: %v", err)
+		}
+		leds, err = pixarray.NewLPD8806(dev, *pixels, 3, uint32(*lpd8806SpiSpeed), order)
+		if err != nil {
+			log.Fatalf("Failed creating LPD8806: %v", err)
+		}
+	case "ws281x":
+		leds, err = pixarray.NewWS281x(*pixels, 3, order)
+		if err != nil {
+			log.Fatalf("Failed creating WS281x: %v", err)
+		}
+	default:
+		log.Fatalf("Unrecognized LED type: %v", *ledChip)
 	}
+	pa := pixarray.NewPixArray(*pixels, 3, leds) // TODO: White
 
 	s, err := NewServer(*port, pa)
 	if err != nil {
