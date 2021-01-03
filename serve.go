@@ -290,7 +290,7 @@ func main() {
 			log.Fatalf("Failed creating LPD8806: %v", err)
 		}
 	case "ws281x":
-		leds, err = pixarray.NewWS281x(*pixels, 3, order, *ws281xFreq, *ws281xDma)
+		leds, err = pixarray.NewWS281x(*pixels, 3, order, *ws281xFreq, *ws281xDma, []int{18, 13})
 		if err != nil {
 			log.Fatalf("Failed creating WS281x: %v", err)
 		}

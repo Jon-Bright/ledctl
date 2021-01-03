@@ -31,7 +31,7 @@ type WS281x struct {
 	cmClk      *cmClkT
 }
 
-func NewWS281x(numPixels int, numColors int, order int, freq uint, dma int) (LEDStrip, error) {
+func NewWS281x(numPixels int, numColors int, order int, freq uint, dma int, pins []int) (LEDStrip, error) {
 	rp, err := detectRPiHW()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't detect RPi hardware: %v", err)
@@ -76,6 +76,13 @@ func NewWS281x(numPixels int, numColors int, order int, freq uint, dma int) (LED
 		wa.freeMem(wa.pixHandle)   // Ignore error
 		return nil, fmt.Errorf("couldn't init registers: %v", err)
 	}
+	err = wa.initGpio(pins)
+	if err != nil {
+		wa.unlockMem(wa.pixHandle) // Ignore error
+		wa.freeMem(wa.pixHandle)   // Ignore error
+		return nil, fmt.Errorf("couldn't init GPIO: %v", err)
+	}
+	wa.initPwm(freq)
 
 	return &wa, nil
 }

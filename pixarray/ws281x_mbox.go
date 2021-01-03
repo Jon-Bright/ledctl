@@ -20,17 +20,6 @@ const (
 	PAGE_SIZE           = 4096 // Theoretically, we could get this via whatever getconf does
 )
 
-type dmaCallback struct {
-	ti        uint32
-	source_ad uint32
-	dest_ad   uint32
-	txfr_len  uint32
-	stride    uint32
-	nextconbk uint32
-	resvd1    uint32
-	resvd2    uint32
-}
-
 func (ws *WS281x) initDmaCb() {
 	ws.dmaCb = (*dmaCallback)(unsafe.Pointer(&ws.pixBuf[ws.pixBufOffs]))
 }
@@ -123,7 +112,7 @@ func (ws *WS281x) mboxProperty(buf []uint32) error {
 	return nil
 }
 
-func (ws *WS281x) calcMboxSize(freq uint) {
+func (ws *WS281x) pwmByteCount(freq uint) uint {
 	// Every bit transmitted needs 3 bits of buffer, because bits are transmitted as
 	// ‾|__ (0) or ‾‾|_ (1). Each color of each pixel needs 8 "real" bits.
 	bits := uint(ws.numPixels * ws.numColors * 8 * 3)
@@ -142,14 +131,20 @@ func (ws *WS281x) calcMboxSize(freq uint) {
 	bytes := bits / 8
 
 	// Round up to next uint32
-	bytes -= bytes % 8
-	bytes += 8
+	bytes -= bytes % 4
+	bytes += 4
 
 	// Add 4 bytes for "idle low/high times"
 	// TODO: WTF is this?
 	bytes += 4
 
 	bytes *= RPI_PWM_CHANNELS
+
+	return bytes
+}
+
+func (ws *WS281x) calcMboxSize(freq uint) {
+	bytes := ws.pwmByteCount(freq)
 
 	bytes += uint(unsafe.Sizeof(dmaCallback{}))
 
