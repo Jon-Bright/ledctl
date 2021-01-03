@@ -2,6 +2,7 @@ package pixarray
 
 import (
 	"fmt"
+	mmap "github.com/edsrzf/mmap-go"
 	"os"
 	"path"
 	"syscall"
@@ -10,6 +11,7 @@ import (
 
 const (
 	VIDEOCORE_MAJOR_NUM = 100
+	MEM_FILE            = "/dev/mem"
 	VCIO_FILE           = "/dev/vcio"
 	MBOX_DEV            = 100 << 20 // Assumes devices have 12-bit major, 20-bit minor numbers
 	MBOX_MODE           = 0600
@@ -27,6 +29,32 @@ type dmaCallback struct {
 	nextconbk uint32
 	resvd1    uint32
 	resvd2    uint32
+}
+
+func (ws *WS281x) initDmaCb() {
+	ws.dmaCb = (*dmaCallback)(unsafe.Pointer(&ws.pixBuf[ws.pixBufOffs]))
+}
+
+func (ws *WS281x) busToPhys(busAddr uintptr) uintptr {
+	return busAddr &^ 0xC0000000
+}
+
+func (ws *WS281x) mapMem(physAddr uintptr, size int) (mmap.MMap, uintptr, error) {
+	pagemask := ^uintptr(PAGE_SIZE - 1)
+	f, err := os.OpenFile(MEM_FILE, os.O_RDWR|os.O_SYNC, os.ModePerm)
+	if err != nil {
+		return nil, 0, fmt.Errorf("couldn't open %s: %v", MEM_FILE, err)
+	}
+	mapAddr := physAddr & pagemask
+	size += int(physAddr - mapAddr)
+	fmt.Printf("MapRegion(f, %d, RDWR, 0, %08X), physAddr %08X, mask %08X\n", size, int64(mapAddr), physAddr, pagemask)
+	mm, err := mmap.MapRegion(f, size, mmap.RDWR, 0, int64(mapAddr))
+	if err != nil {
+		return nil, 0, fmt.Errorf("couldn't map region (%v, %v): %v", physAddr, size, err)
+	}
+	f.Close() // Ignore error
+
+	return mm, physAddr & (PAGE_SIZE - 1), nil
 }
 
 func (ws *WS281x) mboxOpenTemp() (*os.File, error) {
@@ -244,4 +272,41 @@ func (ws *WS281x) lockMem(handle uintptr) (uintptr, error) {
 		return 0, fmt.Errorf("response tag unset: %v", p[4])
 	}
 	return uintptr(p[5]), nil // 5 is the same place as handle above - first part of the tag value
+}
+
+func (ws *WS281x) unlockMem(handle uintptr) error {
+	i := uint32(0)
+	p := make([]uint32, 32)
+	p[i] = 0 // size
+	i++
+	p[i] = 0x00000000 // process request
+	i++
+
+	p[i] = 0x3000e // tag ID for "unlock memory"
+	i++
+	p[i] = 4 // size of the tag value to follow
+	i++
+	p[i] = 0 // afaict, mailbox.c has this wrong, we just need bit 31 clear, rest is reserved
+	i++
+
+	// tag value
+	p[i] = uint32(handle) // handle of the block we want to unlock
+	i++
+
+	p[i] = 0 // no more tags
+	i++
+
+	p[0] = i * 4 // actual size of the tag
+
+	err := ws.mboxProperty(p)
+	if err != nil {
+		return fmt.Errorf("mboxProperty failed: %v", err)
+	}
+	if p[4]&0x80000000 == 0 {
+		return fmt.Errorf("response tag unset: %v", p[4])
+	}
+	if p[5] != 0 {
+		return fmt.Errorf("status non-zero: %v", p[5])
+	}
+	return nil
 }
