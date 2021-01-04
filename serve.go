@@ -120,8 +120,7 @@ func (s *Server) createEffect(cmd, parms string, w *bufio.Writer) (effects.Effec
 		w.WriteString("0\n")
 		err := w.Flush()
 		return nil, err
-	case cmd == "COLOUR":
-	case cmd == "COLOR":
+	case cmd == "COLOUR" || cmd == "COLOR":
 		p := s.pa.GetPixels()[0]
 		c := fmt.Sprintf("%02x%02x%02x\n", p.R, p.G, p.B)
 		log.Printf("Returning %s", c)
