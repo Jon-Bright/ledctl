@@ -55,18 +55,19 @@ func parseDuration(parms string) (string, time.Duration, error) {
 	return t[1], d, nil
 }
 
-func parseColor(parms string) (string, *pixarray.Pixel, error) {
+func (s *Server) parseColor(parms string) (string, *pixarray.Pixel, error) {
 	t := strings.SplitN(parms, " ", 2)
 	var p pixarray.Pixel
-	n, err := fmt.Sscanf(t[0], "%02X%02X%02X", &p.R, &p.G, &p.B)
-	if err != nil {
+	n, err := fmt.Sscanf(t[0], "%02X%02X%02X%02X", &p.R, &p.G, &p.B, &p.W)
+	if err != nil && err != io.EOF {
 		return "", nil, err
 	}
-	if n != 3 {
-		return "", nil, fmt.Errorf("only %d tokens parsed from '%s', wanted 3", n, t[0])
+	if n != s.pa.NumColors() {
+		return "", nil, fmt.Errorf("only %d tokens parsed from '%s', wanted %d", n, t[0], s.pa.NumColors())
 	}
-	if p.R > 127 || p.G > 127 || p.B > 127 {
-		return "", nil, fmt.Errorf("invalid color: one or more of %d, %d, %d is >127, parsed from %s", p.R, p.G, p.B, t[0])
+	max := s.pa.MaxPerChannel()
+	if p.R > max || p.G > max || p.B > max || p.W > max {
+		return "", nil, fmt.Errorf("invalid color: one or more of %d, %d, %d, %d is >%d, parsed from %s", p.R, p.G, p.B, p.W, max, t[0])
 	}
 	if len(t) == 1 {
 		return "", &p, nil
@@ -77,7 +78,7 @@ func parseColor(parms string) (string, *pixarray.Pixel, error) {
 func (s *Server) createEffect(cmd, parms string, w *bufio.Writer) (effects.Effect, error) {
 	switch {
 	case cmd == "FADE_ALL":
-		parms, p, err := parseColor(parms)
+		parms, p, err := s.parseColor(parms)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing color: %v", err)
 		}
@@ -87,7 +88,7 @@ func (s *Server) createEffect(cmd, parms string, w *bufio.Writer) (effects.Effec
 		}
 		return effects.NewFade(d, *p), nil
 	case cmd == "ZIP_SET_ALL":
-		parms, p, err := parseColor(parms)
+		parms, p, err := s.parseColor(parms)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing color: %v", err)
 		}
