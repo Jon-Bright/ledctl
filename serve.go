@@ -156,7 +156,7 @@ func (s *Server) createEffect(cmd, parms string, w *bufio.Writer) (effects.Effec
 		return s.laste, nil
 	case cmd == "OFF":
 		// Hack: we insert this directly into the channel because we don't want to overwrite whatever the last effect was
-		fb := effects.NewFade(10*time.Second, pixarray.Pixel{0, 0, 0, 0})
+		fb := effects.NewFade(20*time.Second, pixarray.Pixel{0, 0, 0, 0})
 		s.off = true
 		s.c <- fb
 		return nil, nil
