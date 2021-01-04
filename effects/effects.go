@@ -134,6 +134,7 @@ func (f *Fade) Start(pa *pixarray.PixArray, now time.Time) {
 		f.diffs[i].R = f.dest.R - v.R
 		f.diffs[i].G = f.dest.G - v.G
 		f.diffs[i].B = f.dest.B - v.B
+		f.diffs[i].W = f.dest.W - v.W
 		if abs(f.diffs[i].R) > maxdiff.R {
 			maxdiff.R = abs(f.diffs[i].R)
 		}
@@ -143,12 +144,15 @@ func (f *Fade) Start(pa *pixarray.PixArray, now time.Time) {
 		if abs(f.diffs[i].B) > maxdiff.B {
 			maxdiff.B = abs(f.diffs[i].B)
 		}
+		if abs(f.diffs[i].W) > maxdiff.W {
+			maxdiff.W = abs(f.diffs[i].W)
+		}
 		if i > 0 && lastp != v {
 			f.allSame = false
 		}
 		lastp = v
 	}
-	if maxdiff.R == 0 && maxdiff.G == 0 && maxdiff.B == 0 {
+	if maxdiff.R == 0 && maxdiff.G == 0 && maxdiff.B == 0 && maxdiff.W == 0 {
 		f.timeStep = f.fadeTime
 	} else {
 		nsStep := f.fadeTime.Nanoseconds() / int64(lcm(maxdiff))
@@ -158,12 +162,11 @@ func (f *Fade) Start(pa *pixarray.PixArray, now time.Time) {
 		}
 		f.timeStep = time.Duration(nsStep)
 	}
-	log.Printf("Fade md.R %d, md.G %d, md.B %d, timestep %v", maxdiff.R, maxdiff.G, maxdiff.B, f.timeStep)
+	log.Printf("Fade md.R %d, md.G %d, md.B %d, md.W %d, timestep %v", maxdiff.R, maxdiff.G, maxdiff.B, maxdiff.W, f.timeStep)
 	f.start = now
 }
 
 func (f *Fade) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
-	// TODO : no white support
 	td := now.Sub(f.start)
 	pct := float64(td.Nanoseconds()) / float64(f.fadeTime.Nanoseconds())
 	if pct >= 1.0 {
@@ -173,11 +176,12 @@ func (f *Fade) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 	}
 	if f.allSame {
 		var this, next pixarray.Pixel
-		var trp, tgp, tbp float64
-		var nrp, ngp, nbp float64
+		var trp, tgp, tbp, twp float64
+		var nrp, ngp, nbp, nwp float64
 		this.R = int(f.startPix[0].R) + int(float64(f.diffs[0].R)*pct)
 		this.G = int(f.startPix[0].G) + int(float64(f.diffs[0].G)*pct)
 		this.B = int(f.startPix[0].B) + int(float64(f.diffs[0].B)*pct)
+		this.W = int(f.startPix[0].W) + int(float64(f.diffs[0].W)*pct)
 		if f.diffs[0].R != 0 {
 			trp = float64(this.R-f.startPix[0].R) / float64(f.diffs[0].R)
 		} else {
@@ -192,6 +196,11 @@ func (f *Fade) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 			tbp = float64(this.B-f.startPix[0].B) / float64(f.diffs[0].B)
 		} else {
 			tbp = 0.0
+		}
+		if f.diffs[0].W != 0 {
+			twp = float64(this.W-f.startPix[0].W) / float64(f.diffs[0].W)
+		} else {
+			twp = 0.0
 		}
 		if f.diffs[0].R > 0 {
 			nrp = float64(this.R+1-f.startPix[0].R) / float64(f.diffs[0].R)
@@ -214,13 +223,21 @@ func (f *Fade) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 		} else {
 			nbp = 1.1
 		}
-		if nrp+ngp+nbp > 3.25 {
-			log.Printf("Weird, no diffs for r,g,b")
+		if f.diffs[0].W > 0 {
+			nwp = float64(this.W+1-f.startPix[0].W) / float64(f.diffs[0].W)
+		} else if f.diffs[0].W < 0 {
+			nwp = float64(this.W-1-f.startPix[0].W) / float64(f.diffs[0].W)
+		} else {
+			nwp = 1.1
+		}
+		if nrp+ngp+nbp+nwp > 4.35 {
+			log.Printf("Weird, no diffs for r,g,b,w")
 			return f.timeStep
 		}
 		pctThroughStepR := (pct - trp) / (nrp - trp)
 		pctThroughStepG := (pct - tgp) / (ngp - tgp)
 		pctThroughStepB := (pct - tbp) / (nbp - tbp)
+		pctThroughStepW := (pct - twp) / (nwp - twp)
 		next = this
 		if f.diffs[0].R != 0 {
 			next.R = next.R + (f.diffs[0].R / abs(f.diffs[0].R))
@@ -231,12 +248,15 @@ func (f *Fade) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 		if f.diffs[0].B != 0 {
 			next.B = next.B + (f.diffs[0].B / abs(f.diffs[0].B))
 		}
+		if f.diffs[0].W != 0 {
+			next.W = next.W + (f.diffs[0].W / abs(f.diffs[0].W))
+		}
 		np := float64(pa.NumPixels())
 		num := pixarray.Pixel{
 			int(np * pctThroughStepR),
 			int(np * pctThroughStepG),
 			int(np * pctThroughStepB),
-			-1,
+			int(np * pctThroughStepW),
 		}
 		pa.SetPerChanAlternate(num, pa.NumPixels(), this, next)
 		return f.timeStep
@@ -248,6 +268,7 @@ func (f *Fade) NextStep(pa *pixarray.PixArray, now time.Time) time.Duration {
 		p.R = int(v.R) + int(float64(f.diffs[i].R)*pct)
 		p.G = int(v.G) + int(float64(f.diffs[i].G)*pct)
 		p.B = int(v.B) + int(float64(f.diffs[i].B)*pct)
+		p.W = int(v.W) + int(float64(f.diffs[i].W)*pct)
 		pa.SetOne(i, p)
 		if i == 0 {
 			// Our first time through, we have no last pixel
