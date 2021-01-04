@@ -3,11 +3,19 @@ package pixarray
 import (
 	"fmt"
 	mmap "github.com/edsrzf/mmap-go"
+	"log"
 	"os"
 	"path"
+	"reflect"
 	"syscall"
 	"unsafe"
 )
+
+// Many details here are from the BCM2835 reference at
+// https://www.raspberrypi.org/app/uploads/2012/02/BCM2835-ARM-Peripherals.pdf
+// Their page numbers are noted below
+// The mailbox that most of this file deals with is documented at
+// https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface
 
 const (
 	VIDEOCORE_MAJOR_NUM = 100
@@ -20,23 +28,38 @@ const (
 	PAGE_SIZE           = 4096 // Theoretically, we could get this via whatever getconf does
 )
 
-func (ws *WS281x) initDmaCb() {
-	ws.dmaCb = (*dmaCallback)(unsafe.Pointer(&ws.pixBuf[ws.pixBufOffs]))
+// mmapToUintSlice does terrible things to a []byte (in the form of an MMap) to return it as []uint32
+func mmapToUintSlice(m mmap.MMap) []uint32 {
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&m))
+	header.Len /= 4
+	header.Cap /= 4
+	return *(*[]uint32)(unsafe.Pointer(&header))
 }
 
+// initDmaControl points the DMA control block at the start of our pixel buffer
+func (ws *WS281x) initDmaControl() {
+	ws.dmaCb = (*dmaControl)(unsafe.Pointer(&ws.pixBuf[ws.pixBufOffs]))
+}
+
+// busToPhys converts a BCM2835 bus address to a physical address
 func (ws *WS281x) busToPhys(busAddr uintptr) uintptr {
-	return busAddr &^ 0xC0000000
+	return busAddr &^ 0xC0000000 // p7
 }
 
+// mapMem opens /dev/mem and uses mmap to map a given physical address into our address space.
+// Since the mapping has to start at a page boundary, the physical address is rounded down to the
+// nearest page boundary. mapMem returns the mapped memory and the offset that should be used to
+// access it (=physAddr%PAGE_SIZE).
 func (ws *WS281x) mapMem(physAddr uintptr, size int) (mmap.MMap, uintptr, error) {
-	pagemask := ^uintptr(PAGE_SIZE - 1)
 	f, err := os.OpenFile(MEM_FILE, os.O_RDWR|os.O_SYNC, os.ModePerm)
 	if err != nil {
 		return nil, 0, fmt.Errorf("couldn't open %s: %v", MEM_FILE, err)
 	}
+
+	pagemask := ^uintptr(PAGE_SIZE - 1)
 	mapAddr := physAddr & pagemask
 	size += int(physAddr - mapAddr)
-	fmt.Printf("MapRegion(f, %d, RDWR, 0, %08X), physAddr %08X, mask %08X\n", size, int64(mapAddr), physAddr, pagemask)
+	log.Printf("MapRegion(f, %d, RDWR, 0, %08X), physAddr %08X, mask %08X\n", size, int64(mapAddr), physAddr, pagemask)
 	mm, err := mmap.MapRegion(f, size, mmap.RDWR, 0, int64(mapAddr))
 	if err != nil {
 		return nil, 0, fmt.Errorf("couldn't map region (%v, %v): %v", physAddr, size, err)
@@ -46,6 +69,8 @@ func (ws *WS281x) mapMem(physAddr uintptr, size int) (mmap.MMap, uintptr, error)
 	return mm, physAddr & (PAGE_SIZE - 1), nil
 }
 
+// mboxOpenTemp creates a temporary device node for ioctl-ing with the mailbox, opens it and
+// immediately removes the node once it's open. It returns the opened node.
 func (ws *WS281x) mboxOpenTemp() (*os.File, error) {
 	tf := path.Join(os.TempDir(), fmt.Sprintf("mailbox-%d", os.Getpid()))
 	err := os.Remove(tf)
@@ -68,6 +93,8 @@ func (ws *WS281x) mboxOpenTemp() (*os.File, error) {
 	return f, nil
 }
 
+// mboxOpen opens /dev/vcio for ioctl-ing with the mailbox. If that doesn't exist, it passes instead
+// to mboxOpenTemp to get a temporary node. It returns the opened mailbox.
 func (ws *WS281x) mboxOpen() (*os.File, error) {
 	f, err := os.OpenFile(VCIO_FILE, os.O_RDONLY, os.ModePerm)
 	if err == os.ErrNotExist {
@@ -83,6 +110,7 @@ func (ws *WS281x) mboxClose() error {
 	return ws.mbox.Close()
 }
 
+// mboxProperty uses ioctl to send messages via the mailbox
 func (ws *WS281x) mboxProperty(buf []uint32) error {
 	f := ws.mbox
 	if f == nil {
@@ -112,6 +140,9 @@ func (ws *WS281x) mboxProperty(buf []uint32) error {
 	return nil
 }
 
+// pwmByteCount calculates the number of bytes needed to store the data for PWM to send - three
+// bits per WS281x bit, plus enough bits to provide an appropriate reset time afterwards at the
+// given frequency. It returns that byte count.
 func (ws *WS281x) pwmByteCount(freq uint) uint {
 	// Every bit transmitted needs 3 bits of buffer, because bits are transmitted as
 	// ‾|__ (0) or ‾‾|_ (1). Each color of each pixel needs 8 "real" bits.
@@ -134,10 +165,6 @@ func (ws *WS281x) pwmByteCount(freq uint) uint {
 	bytes -= bytes % 4
 	bytes += 4
 
-	// Add 4 bytes for "idle low/high times"
-	// TODO: WTF is this?
-	bytes += 4
-
 	bytes *= RPI_PWM_CHANNELS
 
 	return bytes
@@ -146,7 +173,7 @@ func (ws *WS281x) pwmByteCount(freq uint) uint {
 func (ws *WS281x) calcMboxSize(freq uint) {
 	bytes := ws.pwmByteCount(freq)
 
-	bytes += uint(unsafe.Sizeof(dmaCallback{}))
+	bytes += uint(unsafe.Sizeof(dmaControl{}))
 
 	// Our actual size is then whatever the next multiple of PAGE_SIZE is
 	// NB: for anything less than ~1010 total RGBW pixels, this means all the juggling above works
@@ -166,7 +193,7 @@ func (ws *WS281x) allocMem() (uintptr, error) {
 	i++
 	p[i] = 12 // size of the tag value to follow
 	i++
-	p[i] = 0 // afaict, mailbox.c has this wrong, we just need bit 31 clear, rest is reserved
+	p[i] = 0 // bit 31 cleared, rest is reserved
 	i++
 	// tag value
 	p[i] = ws.mboxSize // size of the block we want, in bytes
@@ -211,7 +238,7 @@ func (ws *WS281x) freeMem(handle uintptr) error {
 	i++
 	p[i] = 4 // size of the tag value to follow
 	i++
-	p[i] = 0 // afaict, mailbox.c has this wrong, we just need bit 31 clear, rest is reserved
+	p[i] = 0 // bit 31 cleared, rest is reserved
 	i++
 
 	// tag value
