@@ -76,6 +76,10 @@ func (pa *PixArray) NumColors() int {
 	return pa.numColors
 }
 
+func (pa *PixArray) MaxPerChannel() int {
+	return pa.leds.MaxPerChannel()
+}
+
 func (pa *PixArray) Write() error {
 	return pa.leds.Write()
 }

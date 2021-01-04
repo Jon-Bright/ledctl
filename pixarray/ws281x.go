@@ -87,6 +87,10 @@ func NewWS281x(numPixels int, numColors int, order int, freq uint, dma int, pins
 	return &wa, nil
 }
 
+func (ws *WS281x) MaxPerChannel() int {
+	return 255
+}
+
 func (ws *WS281x) GetPixel(i int) Pixel {
 	return Pixel{}
 }

@@ -36,6 +36,10 @@ func NewLPD8806(dev dev, numPixels int, numColors int, spiSpeed uint32, order in
 	return &la, nil
 }
 
+func (la *LPD8806) MaxPerChannel() int {
+	return 127
+}
+
 const (
 	_SPI_IOC_WR_MAX_SPEED_HZ = 0x40046B04
 	SPI_IOC_MAGIC            = 'k'
