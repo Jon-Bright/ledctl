@@ -37,8 +37,7 @@ import (
 // https://github.com/raspberrypi/linux/blob/rpi-5.4.y/include/uapi/linux/spi/spidev.h#L125
 
 const (
-	SPI_IOC_MAGIC = 'k'
-	MAJOR_NUM     = 100
+	MAJOR_NUM = 100
 )
 
 func TestIow(t *testing.T) {
