@@ -9,21 +9,29 @@ type testLeds struct {
 }
 
 func (l *testLeds) GetPixel(i int) Pixel {
-	return pixels[i]
+	return l.pixels[i]
 }
 
 func (l *testLeds) SetPixel(i int, p Pixel) {
-	pixels[i] = p
+	l.pixels[i] = p
 }
 
-func newTestLeds(numPixels int) {
+func (l *testLeds) Write() error {
+	return nil
+}
+
+func (l *testLeds) MaxPerChannel() int {
+	return 160
+}
+
+func newTestLeds(numPixels int) LEDStrip {
 	return &testLeds{make([]Pixel, numPixels)}
 }
 
 func TestSetOneThenGetOneByOne(t *testing.T) {
 	pa := NewPixArray(100, 3, newTestLeds(100))
-	ps := Pixel{10, 25, 45}
-	pb := Pixel{0, 0, 0}
+	ps := Pixel{10, 25, 45, 55}
+	pb := Pixel{0, 0, 0, 0}
 	pa.SetOne(20, ps)
 	for i := 0; i < 100; i++ {
 		pg := pa.GetPixel(i)
@@ -37,8 +45,8 @@ func TestSetOneThenGetOneByOne(t *testing.T) {
 
 func TestSetOneThenGetAll(t *testing.T) {
 	pa := NewPixArray(100, 3, newTestLeds(100))
-	ps := Pixel{10, 25, 45}
-	pb := Pixel{0, 0, 0}
+	ps := Pixel{10, 25, 45, 55}
+	pb := Pixel{0, 0, 0, 0}
 	pa.SetOne(20, ps)
 	py := pa.GetPixels()
 	if len(py) != 100 {
@@ -55,8 +63,8 @@ func TestSetOneThenGetAll(t *testing.T) {
 
 func TestSetAlternate(t *testing.T) {
 	pa := NewPixArray(100, 3, newTestLeds(100))
-	p1 := Pixel{10, 25, 45}
-	p2 := Pixel{9, 7, 5}
+	p1 := Pixel{10, 25, 45, 55}
+	p2 := Pixel{9, 7, 5, 3}
 
 	tests := []struct {
 		num   int
@@ -122,9 +130,9 @@ func TestSetAlternate(t *testing.T) {
 }
 
 func TestSetPerChanAlternate(t *testing.T) {
-	pa := NewPixArray(100, 3, newTestLeds(100))
-	p1 := Pixel{10, 25, 45}
-	p2 := Pixel{9, 7, 5}
+	pa := NewPixArray(100, 4, newTestLeds(100))
+	p1 := Pixel{10, 25, 45, 55}
+	p2 := Pixel{9, 7, 5, 3}
 
 	tests := []struct {
 		num   Pixel
@@ -134,8 +142,8 @@ func TestSetPerChanAlternate(t *testing.T) {
 		cons1 Pixel // Max number of consecutive p1 we expect
 		cons2 Pixel // Max number of consecutive p2 we expect
 	}{
-		{Pixel{9, 5, 1}, 10, Pixel{10, 50, 90}, Pixel{90, 50, 10}, Pixel{1, 1, 9}, Pixel{9, 1, 1}},
-		{Pixel{51, 52, 99}, 100, Pixel{49, 48, 1}, Pixel{51, 52, 99}, Pixel{1, 1, 1}, Pixel{2, 2, 50}},
+		{Pixel{9, 5, 1, 1}, 10, Pixel{10, 50, 90, 90}, Pixel{90, 50, 10, 10}, Pixel{1, 1, 9, 9}, Pixel{9, 1, 1, 1}},
+		{Pixel{51, 52, 99, 99}, 100, Pixel{49, 48, 1, 1}, Pixel{51, 52, 99, 99}, Pixel{1, 1, 1, 1}, Pixel{2, 2, 50, 50}},
 	}
 
 	for _, test := range tests {
@@ -165,6 +173,11 @@ func TestSetPerChanAlternate(t *testing.T) {
 				cons.B++
 			} else {
 				cons.B = 1
+			}
+			if py[i].W == lp.W {
+				cons.W++
+			} else {
+				cons.W = 1
 			}
 			if py[i].R == p1.R {
 				n1.R++
@@ -205,6 +218,19 @@ func TestSetPerChanAlternate(t *testing.T) {
 			} else {
 				t.Errorf("B(%d/%d): Unexpected pixel got: %v, want: %v or %v", test.num.B, test.div, py[i].B, p1.B, p2.B)
 			}
+			if py[i].W == p1.W {
+				n1.W++
+				if cons.W > cons1.W {
+					cons1.W = cons.W
+				}
+			} else if py[i].W == p2.W {
+				n2.W++
+				if cons.W > cons2.W {
+					cons2.W = cons.W
+				}
+			} else {
+				t.Errorf("W(%d/%d): Unexpected pixel got: %v, want: %v or %v", test.num.W, test.div, py[i].W, p1.W, p2.W)
+			}
 			lp = py[i]
 		}
 		if n1 != test.want1 {
@@ -224,8 +250,8 @@ func TestSetPerChanAlternate(t *testing.T) {
 
 func BenchmarkSetAlternate(b *testing.B) {
 	pa := NewPixArray(100, 3, newTestLeds(100))
-	p1 := Pixel{10, 25, 45}
-	p2 := Pixel{9, 7, 5}
+	p1 := Pixel{10, 25, 45, 55}
+	p2 := Pixel{9, 7, 5, 3}
 	for i := 0; i < b.N/2; i++ {
 		pa.SetAlternate(5, 7, p1, p2)
 		pa.SetAlternate(2, 7, p1, p2)
@@ -234,10 +260,10 @@ func BenchmarkSetAlternate(b *testing.B) {
 
 func BenchmarkSetPerChanAlternate(b *testing.B) {
 	pa := NewPixArray(100, 3, newTestLeds(100))
-	p1 := Pixel{10, 25, 45}
-	p2 := Pixel{9, 7, 5}
-	s1 := Pixel{5, 1, 2}
-	s2 := Pixel{2, 6, 5}
+	p1 := Pixel{10, 25, 45, 55}
+	p2 := Pixel{9, 7, 5, 3}
+	s1 := Pixel{5, 1, 2, 3}
+	s2 := Pixel{2, 6, 5, 4}
 	for i := 0; i < b.N/2; i++ {
 		pa.SetPerChanAlternate(s1, 7, p1, p2)
 		pa.SetPerChanAlternate(s2, 7, p1, p2)
