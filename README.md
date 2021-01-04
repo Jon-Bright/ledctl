@@ -1,20 +1,27 @@
 # ledctl
 
-A Go server to control SPI-controlled LEDs. Specifically, I made this to control an LPD8806 strip.
+A Go server to control LED strips, supporting LPD8806 and WS281x (WS2811, WS2812, WS2815 etc.).
+
+The WS281x support is *heavily* based on [jgarff's C version](https://github.com/jgarff/rpi_ws281x), but in contrast to the [Go bindings](https://github.com/rpi-ws281x/rpi-ws281x-go) for that library, the support here is pure Golang and doesn't use the C library. On the other hand, it only supports output via PWM, not SPI or PCM (because I didn't need them - there's nothing fundamental preventing this).
 
 ## Usage
 
 ```
 cd ledctl
-export GOPATH=$(pwd)
-go build main
-./main --dev=/dev/spidev0.0 --port=24601 --pixels=160 --spispeed=1000000 --order=GRB &    # All flags optional, these are the defaults
+go build
+# LPD8806 - all flags other than ledchip optional, these are the defaults
+./ledctl --ledchip=lpd8806 --dev=/dev/spidev0.0 --spispeed=1000000 --port=24601 --pixels=160 --order=GRB &
+# WS281x - all flags optional, these are the defaults
+./ledctl --ledchip=ws281x --ws281xfreq=800000 --ws281xDma=10 --port=24601 --pixels=160 --order=GRB &
 echo -e 'ZIP_SET_ALL 7f0000 5.0\nQUIT' |nc localhost 24601
 ```
 
 Once started, the server opens the specified port and listens for connections. It recognizes the plain text commands listed below.  There are two parameters that appear repeatedly:
 
-*colour* is a six digit hex-encoded RGB colour.  Each channel may be at most 127.  `7f7f7f` would therefore represent white, `7f0000` would be bright red, `000001` would be the dimmest possible green.
+*colour* is a six digit hex-encoded RGB colour (eight digit for RGBW).
+
+LPD8806: Each channel may be at most 127.  `7f7f7f` would therefore represent white, `7f0000` would be bright red, `000001` would be the dimmest possible green.
+WS281x: Each channel may be at most 255.  `ffffff` would therefore represent white (on an RGB strip), `ff0000` would be bright red, `000001` would be the dimmest possible green.
 
 *duration* is a duration for the effect, in decimal seconds.  `1.0` is exactly one second, `2.5` is two-and-a-half seconds.
 
@@ -22,7 +29,7 @@ Once started, the server opens the specified port and listens for connections. I
 FADE_ALL <colour> <duration>
 ```
 
-Fades all LEDs to the specified colour, over the specified duration.  Will set alternate LEDs to different colours to make slower fades than the LEDs' PWM can achieve (i.e. even though LED PWM can only do 127 steps, the fading can take an arbitrarily-larger number of steps, depending on the number of available LEDs).
+Fades all LEDs to the specified colour, over the specified duration.  Will set alternate LEDs to different colours to make slower fades than the LEDs' PWM can achieve (i.e. even though LED PWM can only do 127 or 255 steps, the fading can take an arbitrarily-larger number of steps, depending on the number of available LEDs).
 
 Returns `OK`
 
@@ -59,9 +66,6 @@ Returns `0` if all LEDs are completely off, `1` otherwise.
 ```
 COLOR
 ```
-
-Capriciously unknown command.
-
 ```
 COLOUR
 ```
