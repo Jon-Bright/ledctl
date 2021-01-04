@@ -2,7 +2,7 @@ package pixarray
 
 import (
 	"fmt"
-	"sync/atomic"
+	"log"
 	"time"
 	"unsafe"
 )
@@ -36,10 +36,17 @@ var dmaOffsets = map[int]uintptr{
 }
 
 const (
-	RPI_DMA_TI_NO_WIDE_BURSTS = 1 << 26
-	RPI_DMA_TI_SRC_INC        = 1 << 8
-	RPI_DMA_TI_DEST_DREQ      = 1 << 6
-	RPI_DMA_TI_WAIT_RESP      = 1 << 3
+	RPI_DMA_CS_RESET                      = 1 << 31
+	RPI_DMA_CS_WAIT_OUTSTANDING_WRITES    = 1 << 28
+	RPI_DMA_CS_ERROR                      = 1 << 8
+	RPI_DMA_CS_WAITING_OUTSTANDING_WRITES = 1 << 6
+	RPI_DMA_CS_INT                        = 1 << 2
+	RPI_DMA_CS_END                        = 1 << 1
+	RPI_DMA_CS_ACTIVE                     = 1 << 0
+	RPI_DMA_TI_NO_WIDE_BURSTS             = 1 << 26
+	RPI_DMA_TI_SRC_INC                    = 1 << 8
+	RPI_DMA_TI_DEST_DREQ                  = 1 << 6
+	RPI_DMA_TI_WAIT_RESP                  = 1 << 3
 )
 
 type dmaT struct {
@@ -54,7 +61,7 @@ type dmaT struct {
 	debug     uint32
 }
 
-type dmaCallback struct {
+type dmaControl struct {
 	ti        uint32
 	sourceAd  uint32
 	destAd    uint32
@@ -157,32 +164,32 @@ func (ws *WS281x) mapDmaRegisters(dma int) error {
 		err     error
 		bufOffs uintptr
 	)
-	ws.dmaBuf, bufOffs, err = ws.mapMem(offset, int(unsafe.Sizeof(dmaT{})))
+	ws.dmaBuf, ws.dmaBufOffs, err = ws.mapMem(offset, int(unsafe.Sizeof(dmaT{})))
 	if err != nil {
 		return fmt.Errorf("couldn't map dmaT at %08X: %v", offset, err)
 	}
-	fmt.Printf("Got dmaBuf[%d], offset %d\n", len(ws.dmaBuf), bufOffs)
-	ws.dma = (*dmaT)(unsafe.Pointer(&ws.dmaBuf[bufOffs]))
+	log.Printf("Got dmaBuf[%d], offset %d\n", len(ws.dmaBuf), ws.dmaBufOffs)
+	ws.dma = (*dmaT)(unsafe.Pointer(&ws.dmaBuf[ws.dmaBufOffs]))
 
 	ws.pwmBuf, bufOffs, err = ws.mapMem(PWM_OFFSET+ws.rp.periphBase, int(unsafe.Sizeof(pwmT{})))
 	if err != nil {
 		return fmt.Errorf("couldn't map pwmT at %08X: %v", PWM_OFFSET+ws.rp.periphBase, err)
 	}
-	fmt.Printf("Got pwmBuf[%d], offset %d\n", len(ws.pwmBuf), bufOffs)
+	log.Printf("Got pwmBuf[%d], offset %d\n", len(ws.pwmBuf), bufOffs)
 	ws.pwm = (*pwmT)(unsafe.Pointer(&ws.pwmBuf[bufOffs]))
 
 	ws.gpioBuf, bufOffs, err = ws.mapMem(GPIO_OFFSET+ws.rp.periphBase, int(unsafe.Sizeof(gpioT{})))
 	if err != nil {
 		return fmt.Errorf("couldn't map gpioT at %08X: %v", GPIO_OFFSET+ws.rp.periphBase, err)
 	}
-	fmt.Printf("Got gpioBuf[%d], offset %d\n", len(ws.gpioBuf), bufOffs)
+	log.Printf("Got gpioBuf[%d], offset %d\n", len(ws.gpioBuf), bufOffs)
 	ws.gpio = (*gpioT)(unsafe.Pointer(&ws.gpioBuf[bufOffs]))
 
 	ws.cmClkBuf, bufOffs, err = ws.mapMem(CM_PWM_OFFSET+ws.rp.periphBase, int(unsafe.Sizeof(cmClkT{})))
 	if err != nil {
 		return fmt.Errorf("couldn't map cmClkT at %08X: %v", CM_PWM_OFFSET+ws.rp.periphBase, err)
 	}
-	fmt.Printf("Got cmClkBuf[%d], offset %d\n", len(ws.cmClkBuf), bufOffs)
+	log.Printf("Got cmClkBuf[%d], offset %d\n", len(ws.cmClkBuf), bufOffs)
 	ws.cmClk = (*cmClkT)(unsafe.Pointer(&ws.cmClkBuf[bufOffs]))
 
 	return nil
@@ -220,10 +227,12 @@ func (ws *WS281x) stopPwm() {
 	// Kill the clock if it was already running
 	ws.cmClk.ctl = CM_CLK_CTL_PASSWD | CM_CLK_CTL_KILL
 	time.Sleep(10 * time.Microsecond)
-	fmt.Printf("Waiting for cmClk not-busy\n")
-	for (atomic.LoadUint32(&ws.cmClk.ctl) & CM_CLK_CTL_BUSY) != 0 {
+	log.Printf("Waiting for cmClk not-busy\n")
+	i := 0
+	for (ws.cmClk.ctl & CM_CLK_CTL_BUSY) != 0 {
+		i++
 	}
-	fmt.Printf("Done\n")
+	log.Printf("Done %d\n", i)
 }
 
 func (ws *WS281x) cmClkDivI(val uint32) uint32 {
@@ -255,12 +264,14 @@ func (ws *WS281x) initPwm(freq uint) {
 	ws.cmClk.ctl = CM_CLK_CTL_PASSWD | CM_CLK_CTL_SRC_OSC
 	ws.cmClk.ctl = CM_CLK_CTL_PASSWD | CM_CLK_CTL_SRC_OSC | CM_CLK_CTL_ENAB
 	time.Sleep(10 * time.Microsecond)
-	fmt.Printf("Waiting for cmClk busy\n")
-	for (atomic.LoadUint32(&ws.cmClk.ctl) & CM_CLK_CTL_BUSY) == 0 {
+	log.Printf("Waiting for cmClk busy\n")
+	i := 0
+	for (ws.cmClk.ctl & CM_CLK_CTL_BUSY) == 0 {
+		i++
 	}
-	fmt.Printf("Done\n")
+	log.Printf("Done %d\n", i)
 
-	// Setup the PWM, use delays as the block is rumored to lock up without them.  Make
+	// Set up the PWM, use delays as the block is rumored to lock up without them.  Make
 	// sure to use a high enough priority to avoid any FIFO underruns, especially if
 	// the CPU is busy doing lots of memory accesses, or another DMA controller is
 	// busy.  The FIFO will clock out data at a much slower rate (2.6Mhz max), so
@@ -283,7 +294,7 @@ func (ws *WS281x) initPwm(freq uint) {
 		ws.rpiDmaTiPerMap(5) | // PWM peripheral
 		RPI_DMA_TI_SRC_INC // Increment src addr
 
-	ws.dmaCb.sourceAd = uint32(ws.pixBusAddr + unsafe.Sizeof(dmaCallback{}))
+	ws.dmaCb.sourceAd = uint32(ws.pixBusAddr + unsafe.Sizeof(dmaControl{}))
 
 	ws.dmaCb.destAd = PWM_PERIPH_PHYS + uint32(unsafe.Offsetof(ws.pwm.fif1))
 	ws.dmaCb.txLen = uint32(ws.pwmByteCount(freq))
@@ -292,4 +303,50 @@ func (ws *WS281x) initPwm(freq uint) {
 
 	ws.dma.cs = 0
 	ws.dma.txLen = 0
+}
+
+func (ws *WS281x) rpiDmaCsPanicPriority(val uint32) uint32 {
+	return (val & 0xf) << 20
+}
+
+func (ws *WS281x) rpiDmaCsPriority(val uint32) uint32 {
+	return (val & 0xf) << 16
+}
+
+func (ws *WS281x) waitForDMAEnd() error {
+	var cs uint32
+	i := 0
+	for true {
+		cs = ws.dma.cs
+		if (cs & RPI_DMA_CS_ACTIVE) == 0 {
+			break
+		}
+		if (cs & RPI_DMA_CS_ERROR) != 0 {
+			break
+		}
+		i++
+		if i == 100000 {
+			return fmt.Errorf("wait failed, cs %08X", cs)
+		}
+		time.Sleep(10 * time.Microsecond)
+	}
+	if (cs & RPI_DMA_CS_ERROR) != 0 {
+		return fmt.Errorf("DMA error, cs %08X, debug %08X", cs, ws.dma.debug)
+	}
+	return nil
+}
+
+func (ws *WS281x) startDma() {
+	ws.dma.cs = RPI_DMA_CS_RESET
+	time.Sleep(10 * time.Microsecond)
+
+	ws.dma.cs = RPI_DMA_CS_INT | RPI_DMA_CS_END
+	time.Sleep(10 * time.Microsecond)
+
+	ws.dma.conblkAd = uint32(ws.pixBusAddr)
+	ws.dma.debug = 7 // clear debug error flags
+	ws.dma.cs = RPI_DMA_CS_WAIT_OUTSTANDING_WRITES |
+		ws.rpiDmaCsPanicPriority(15) |
+		ws.rpiDmaCsPriority(15) |
+		RPI_DMA_CS_ACTIVE
 }
