@@ -12,6 +12,7 @@ type pwmPin struct {
 	pin     int
 }
 
+// Mapping of PWM channel/pin numbers to which "alt" function means "PWM". See p102 of datasheet.
 var pwmPinToAlt = map[pwmPin]int{
 	{0, 12}: 0,
 	{0, 18}: 5,
