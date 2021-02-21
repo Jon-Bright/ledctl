@@ -18,6 +18,8 @@ var lpd8806Dev = flag.String("dev", "/dev/spidev0.0", "The SPI device on which L
 var lpd8806SpiSpeed = flag.Uint("spispeed", 1000000, "The speed to send data via SPI to LPD8806s, in Hz")
 var ws281xFreq = flag.Uint("ws281xfreq", 800000, "The frequency to send data to WS2801x devices, in Hz")
 var ws281xDma = flag.Int("ws281xdma", 10, "The DMA channel to use for sending data to WS281x devices")
+var ws281xPin0 = flag.Int("ws281xpin0", 18, "The pin on which channel 0 should be output for WS281x devices")
+var ws281xPin1 = flag.Int("ws281xpin1", 13, "The pin on which channel 1 should be output for WS281x devices")
 var ledChip = flag.String("ledchip", "ws281x", "The type of LED strip to drive: one of ws281x, lpd8806")
 var port = flag.Int("port", 24601, "The port that the server should listen to")
 var pixels = flag.Int("pixels", 5*32, "The number of pixels to be controlled")
@@ -290,7 +292,7 @@ func main() {
 			log.Fatalf("Failed creating LPD8806: %v", err)
 		}
 	case "ws281x":
-		leds, err = pixarray.NewWS281x(*pixels, 3, order, *ws281xFreq, *ws281xDma, []int{18, 13})
+		leds, err = pixarray.NewWS281x(*pixels, 3, order, *ws281xFreq, *ws281xDma, []int{*ws281xPin0, *ws281xPin1})
 		if err != nil {
 			log.Fatalf("Failed creating WS281x: %v", err)
 		}
