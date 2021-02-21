@@ -1,6 +1,7 @@
-package pixarray
+package rpi
 
 import (
+	"errors"
 	"fmt"
 	mmap "github.com/edsrzf/mmap-go"
 	"log"
@@ -23,26 +24,79 @@ const (
 	VCIO_FILE           = "/dev/vcio"
 	MBOX_DEV            = 100 << 20 // Assumes devices have 12-bit major, 20-bit minor numbers
 	MBOX_MODE           = 0600
-	LED_RESET_US        = 55
 	RPI_PWM_CHANNELS    = 2
-	PAGE_SIZE           = 4096 // Theoretically, we could get this via whatever getconf does
 )
 
-// mmapToUintSlice does terrible things to a []byte (in the form of an MMap) to return it as []uint32
-func mmapToUintSlice(m mmap.MMap) []uint32 {
-	header := *(*reflect.SliceHeader)(unsafe.Pointer(&m))
+type PhysBuf struct {
+	handle  uintptr
+	busAddr uintptr
+	buf     mmap.MMap
+	offs    uintptr
+}
+
+// uint32Slice does terrible things to an MMap (which is itself a []byte), to returns the physical buffer
+// as a []uint32. It takes care of the offset between the page boundary (where MMaps always start) and the actual
+// desired mapped area and also adds any bytes specified by offs.
+func (pb *PhysBuf) uint32Slice(offs uintptr) []uint32 {
+	offs += pb.offs
+	header := *(*reflect.SliceHeader)(unsafe.Pointer(&pb.buf))
+	header.Len -= int(offs)
 	header.Len /= 4
+	header.Cap -= int(offs)
 	header.Cap /= 4
+	header.Data += offs
 	return *(*[]uint32)(unsafe.Pointer(&header))
 }
 
-// initDmaControl points the DMA control block at the start of our pixel buffer
-func (ws *WS281x) initDmaControl() {
-	ws.dmaCb = (*dmaControl)(unsafe.Pointer(&ws.pixBuf[ws.pixBufOffs]))
+func (rp *RPi) FreePhysBuf(pb *PhysBuf) error {
+	var err, te error
+	if pb.buf != nil {
+		err = pb.buf.Unmap()
+		pb.buf = nil
+		// Ignore error, return it later
+	}
+	if pb.busAddr != 0 {
+		pb.busAddr = 0
+		te = rp.unlockVCMem(pb.handle)
+		if err == nil {
+			err = te
+		}
+	}
+	if pb.handle != 0 {
+		te = rp.freeVCMem(pb.handle)
+		pb.handle = 0
+		if err == nil {
+			err = te
+		}
+	}
+	return err
+}
+
+// getPhysBuf gets a buffer of Videocore memory that can be used for DMA or other purposes.
+func (rp *RPi) getPhysBuf(size uint32) (*PhysBuf, error) {
+	pb := PhysBuf{}
+	var err error
+	pb.handle, err = rp.allocVCMem(size)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't allocMem of size %v: %v", size, err)
+	}
+	pb.busAddr, err = rp.lockVCMem(pb.handle)
+	if err != nil {
+		rp.freeVCMem(pb.handle) // Ignore error
+		return nil, fmt.Errorf("couldn't lockMem(%X) of size %v: %v", pb.handle, size, err)
+	}
+	pb.buf, pb.offs, err = rp.mapMem(busToPhys(pb.busAddr), int(size))
+	if err != nil {
+		rp.unlockVCMem(pb.handle) // Ignore error
+		rp.freeVCMem(pb.handle)   // Ignore error
+		return nil, fmt.Errorf("couldn't map busAddr(%X) of size %v: %v", pb.busAddr, size, err)
+	}
+	log.Printf("mapped %d bytes, busaddr %08X, offset %d\n", size, pb.busAddr, pb.offs)
+	return &pb, nil
 }
 
 // busToPhys converts a BCM2835 bus address to a physical address
-func (ws *WS281x) busToPhys(busAddr uintptr) uintptr {
+func busToPhys(busAddr uintptr) uintptr {
 	return busAddr &^ 0xC0000000 // p7
 }
 
@@ -50,7 +104,7 @@ func (ws *WS281x) busToPhys(busAddr uintptr) uintptr {
 // Since the mapping has to start at a page boundary, the physical address is rounded down to the
 // nearest page boundary. mapMem returns the mapped memory and the offset that should be used to
 // access it (=physAddr%PAGE_SIZE).
-func (ws *WS281x) mapMem(physAddr uintptr, size int) (mmap.MMap, uintptr, error) {
+func (rp *RPi) mapMem(physAddr uintptr, size int) (mmap.MMap, uintptr, error) {
 	f, err := os.OpenFile(MEM_FILE, os.O_RDWR|os.O_SYNC, os.ModePerm)
 	if err != nil {
 		return nil, 0, fmt.Errorf("couldn't open %s: %v", MEM_FILE, err)
@@ -71,117 +125,61 @@ func (ws *WS281x) mapMem(physAddr uintptr, size int) (mmap.MMap, uintptr, error)
 
 // mboxOpenTemp creates a temporary device node for ioctl-ing with the mailbox, opens it and
 // immediately removes the node once it's open. It returns the opened node.
-func (ws *WS281x) mboxOpenTemp() (*os.File, error) {
+func (rp *RPi) mboxOpenTemp() error {
 	tf := path.Join(os.TempDir(), fmt.Sprintf("mailbox-%d", os.Getpid()))
 	err := os.Remove(tf)
 	if err != nil && err != os.ErrNotExist {
-		return nil, fmt.Errorf("couldn't remove temp mbox: %v", err)
+		return fmt.Errorf("couldn't remove temp mbox: %v", err)
 	}
 	err = syscall.Mknod(tf, syscall.S_IFCHR|MBOX_MODE, MBOX_DEV)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't make device node: %v", err)
+		return fmt.Errorf("couldn't make device node: %v", err)
 	}
 	f, err := os.OpenFile(tf, os.O_RDONLY, os.ModePerm)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't open temp mbox: %v", err)
+		return fmt.Errorf("couldn't open temp mbox: %v", err)
 	}
 	err = os.Remove(tf)
 	if err != nil {
 		f.Close() // Ignore error
-		return nil, fmt.Errorf("couldn't remove temp mbox: %v", err)
+		return fmt.Errorf("couldn't remove temp mbox: %v", err)
 	}
-	return f, nil
+	rp.mbox = f
+	return nil
 }
 
 // mboxOpen opens /dev/vcio for ioctl-ing with the mailbox. If that doesn't exist, it passes instead
 // to mboxOpenTemp to get a temporary node. It returns the opened mailbox.
-func (ws *WS281x) mboxOpen() (*os.File, error) {
-	f, err := os.OpenFile(VCIO_FILE, os.O_RDONLY, os.ModePerm)
+func (rp *RPi) mboxOpen() error {
+	var err error
+	rp.mbox, err = os.OpenFile(VCIO_FILE, os.O_RDONLY, os.ModePerm)
 	if err == os.ErrNotExist {
-		f, err = ws.mboxOpenTemp()
+		err = rp.mboxOpenTemp()
 	}
 	if err != nil {
-		return nil, fmt.Errorf("couldn't open mbox: %v", err)
+		return fmt.Errorf("couldn't open mbox: %v", err)
 	}
-	return f, nil
-}
-
-func (ws *WS281x) mboxClose() error {
-	return ws.mbox.Close()
-}
-
-// mboxProperty uses ioctl to send messages via the mailbox
-func (ws *WS281x) mboxProperty(buf []uint32) error {
-	f := ws.mbox
-	if f == nil {
-		var err error
-		f, err = ws.mboxOpen()
-		if err != nil {
-			return fmt.Errorf("mbox not open, couldn't open: %v", err)
-		}
-	}
-
-	mboxProperty := iowr(VIDEOCORE_MAJOR_NUM, 0, uintptr(0))
-	if f != nil {
-		err := ioctlArrUint32(f.Fd(), mboxProperty, buf)
-
-		if err != nil {
-			return fmt.Errorf("failed ioctl mbox property: %v", err)
-		}
-	}
-
-	if ws.mbox == nil {
-		err := f.Close()
-		if err != nil {
-			return fmt.Errorf("couldn't close mbox?!: %v", err)
-		}
-	}
-
 	return nil
 }
 
-// pwmByteCount calculates the number of bytes needed to store the data for PWM to send - three
-// bits per WS281x bit, plus enough bits to provide an appropriate reset time afterwards at the
-// given frequency. It returns that byte count.
-func (ws *WS281x) pwmByteCount(freq uint) uint {
-	// Every bit transmitted needs 3 bits of buffer, because bits are transmitted as
-	// ‾|__ (0) or ‾‾|_ (1). Each color of each pixel needs 8 "real" bits.
-	bits := uint(ws.numPixels * ws.numColors * 8 * 3)
-
-	// freq is typically 800kHz, so for LED_RESET_US=55 us, this gives us
-	// ((55 * (800000 * 3)) / 1000000
-	// ((55 * 2400000) / 1000000
-	// 132000000 / 1000000
-	// 132
-	// Taking this the other way, 132 bits of buffer is 132/3=44 "real" bits. With each "real" bit
-	// taking 1/800000th of a second, this will take 44/800000ths of a second, which is
-	// 0.000055s - 55 us.
-	bits += ((LED_RESET_US * (freq * 3)) / 1000000)
-
-	// This isn't a PDP-11, so there are 8 bits in a byte
-	bytes := bits / 8
-
-	// Round up to next uint32
-	bytes -= bytes % 4
-	bytes += 4
-
-	bytes *= RPI_PWM_CHANNELS
-
-	return bytes
+func (rp *RPi) mboxClose() error {
+	return rp.mbox.Close()
 }
 
-func (ws *WS281x) calcMboxSize(freq uint) {
-	bytes := ws.pwmByteCount(freq)
-
-	bytes += uint(unsafe.Sizeof(dmaControl{}))
-
-	// Our actual size is then whatever the next multiple of PAGE_SIZE is
-	// NB: for anything less than ~1010 total RGBW pixels, this means all the juggling above works
-	// out to 4096.
-	ws.mboxSize = uint32(((bytes / PAGE_SIZE) + 1) * PAGE_SIZE)
+// mboxProperty uses ioctl to send messages via the mailbox
+func (rp *RPi) mboxProperty(buf []uint32) error {
+	if rp.mbox == nil {
+		return errors.New("mailbox not open")
+	}
+	mboxProperty := iowr(VIDEOCORE_MAJOR_NUM, 0, uintptr(0))
+	err := ioctlArrUint32(rp.mbox.Fd(), mboxProperty, buf)
+	if err != nil {
+		return fmt.Errorf("failed ioctl mbox property: %v", err)
+	}
+	return nil
 }
 
-func (ws *WS281x) allocMem() (uintptr, error) {
+func (rp *RPi) allocVCMem(size uint32) (uintptr, error) {
 	i := uint32(0)
 	p := make([]uint32, 32)
 	p[i] = 0 // size
@@ -196,14 +194,14 @@ func (ws *WS281x) allocMem() (uintptr, error) {
 	p[i] = 0 // bit 31 cleared, rest is reserved
 	i++
 	// tag value
-	p[i] = ws.mboxSize // size of the block we want, in bytes
+	p[i] = size // size of the block we want, in bytes
 	i++
 	p[i] = PAGE_SIZE // alignment - we want it aligned to a page boundary
 	i++
 
 	// Unclear why this difference: original code has no comment and the commit that added this
 	// was just "Finish RPI2 changes. Ready for testing."
-	if ws.rp.vcBase == VIDEOCORE_BASE_RPI {
+	if rp.hw.vcBase == VIDEOCORE_BASE_RPI {
 		p[i] = 0xC // MEM_FLAG_L1_NONALLOCATING
 	} else {
 		p[i] = 0x4 // MEM_FLAG_DIRECT
@@ -213,7 +211,7 @@ func (ws *WS281x) allocMem() (uintptr, error) {
 	i++
 	p[0] = i * 4 // actual size of the tag
 
-	err := ws.mboxProperty(p)
+	err := rp.mboxProperty(p)
 	if err != nil {
 		return 0, fmt.Errorf("mboxProperty failed: %v", err)
 	}
@@ -226,7 +224,7 @@ func (ws *WS281x) allocMem() (uintptr, error) {
 	return uintptr(p[5]), nil // 5 is the same place as mboxSize above - first part of the tag value
 }
 
-func (ws *WS281x) freeMem(handle uintptr) error {
+func (rp *RPi) freeVCMem(handle uintptr) error {
 	i := uint32(0)
 	p := make([]uint32, 32)
 	p[i] = 0 // size
@@ -249,7 +247,7 @@ func (ws *WS281x) freeMem(handle uintptr) error {
 	i++
 	p[0] = i * 4 // actual size of the tag
 
-	err := ws.mboxProperty(p)
+	err := rp.mboxProperty(p)
 	if err != nil {
 		return fmt.Errorf("mboxProperty failed: %v", err)
 	}
@@ -262,7 +260,7 @@ func (ws *WS281x) freeMem(handle uintptr) error {
 	return nil
 }
 
-func (ws *WS281x) lockMem(handle uintptr) (uintptr, error) {
+func (rp *RPi) lockVCMem(handle uintptr) (uintptr, error) {
 	i := uint32(0)
 	p := make([]uint32, 32)
 	p[i] = 0 // size
@@ -286,7 +284,7 @@ func (ws *WS281x) lockMem(handle uintptr) (uintptr, error) {
 
 	p[0] = i * 4 // actual size of the tag
 
-	err := ws.mboxProperty(p)
+	err := rp.mboxProperty(p)
 	if err != nil {
 		return 0, fmt.Errorf("mboxProperty failed: %v", err)
 	}
@@ -296,7 +294,7 @@ func (ws *WS281x) lockMem(handle uintptr) (uintptr, error) {
 	return uintptr(p[5]), nil // 5 is the same place as handle above - first part of the tag value
 }
 
-func (ws *WS281x) unlockMem(handle uintptr) error {
+func (rp *RPi) unlockVCMem(handle uintptr) error {
 	i := uint32(0)
 	p := make([]uint32, 32)
 	p[i] = 0 // size
@@ -320,7 +318,7 @@ func (ws *WS281x) unlockMem(handle uintptr) error {
 
 	p[0] = i * 4 // actual size of the tag
 
-	err := ws.mboxProperty(p)
+	err := rp.mboxProperty(p)
 	if err != nil {
 		return fmt.Errorf("mboxProperty failed: %v", err)
 	}

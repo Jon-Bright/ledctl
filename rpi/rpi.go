@@ -1,13 +1,43 @@
-package pixarray
+package rpi
 
 import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	mmap "github.com/edsrzf/mmap-go"
 	"os"
 )
 
-type RasPiHW struct {
+type RPi struct {
+	mbox     *os.File
+	mboxSize uint32
+	hw       *hw
+	dmaBuf   mmap.MMap
+	dma      *dmaT
+	pwmBuf   mmap.MMap
+	pwm      *pwmT
+	gpioBuf  mmap.MMap
+	gpio     *gpioT
+	cmClkBuf mmap.MMap
+	cmClk    *cmClkT
+}
+
+func NewRPi() (*RPi, error) {
+	hw, err := detectHardware()
+	if err != nil {
+		return nil, fmt.Errorf("couldn't detect RPi hardware: %v", err)
+	}
+	rp := RPi{
+		hw: hw,
+	}
+	err = rp.mboxOpen()
+	if err != nil {
+		return nil, fmt.Errorf("couldn't open mailbox: %v", err)
+	}
+	return &rp, nil
+}
+
+type hw struct {
 	hwType     int
 	periphBase uintptr
 	vcBase     uintptr
@@ -31,7 +61,7 @@ const (
 // Detect which version of a Raspberry Pi we're running on
 // The original rpihw.c does this in two different ways, one for ARM64 only.
 // My non-64-bit RPis also support the ARM64 way, though, so this implements just that (easier) way.
-func detectRPiHW() (*RasPiHW, error) {
+func detectHardware() (*hw, error) {
 	f, err := os.Open("/proc/device-tree/system/linux,revision")
 	if err != nil {
 		return nil, fmt.Errorf("couldn't open linux revision file: %v", err)
@@ -57,7 +87,7 @@ func detectRPiHW() (*RasPiHW, error) {
 	return nil, fmt.Errorf("couldn't identify hardware revision %X", ver)
 }
 
-var rasPiVariants = map[uint32]RasPiHW{
+var rasPiVariants = map[uint32]hw{
 	//
 	// Raspberry Pi 400
 	//

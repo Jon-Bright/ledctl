@@ -2,6 +2,7 @@ package pixarray
 
 import (
 	"fmt"
+	rpi "github.com/Jon-Bright/ledctl/rpi"
 )
 
 type LPD8806 struct {
@@ -13,23 +14,28 @@ type LPD8806 struct {
 	w         int
 	dev       dev
 	sendBytes []byte
+	rp        *rpi.RPi
 }
 
 func NewLPD8806(dev dev, numPixels int, numColors int, spiSpeed uint32, order int) (LEDStrip, error) {
 	numReset := (numPixels + 31) / 32
 	val := make([]byte, numPixels*numColors+numReset)
 	offsets := offsets[order]
-	la := LPD8806{numColors, val[:numPixels*numColors], offsets[0], offsets[1], offsets[2], offsets[3], dev, val}
+	rp, err := rpi.NewRPi()
+	if err != nil {
+		return nil, fmt.Errorf("couldn't make RPi: %v", err)
+	}
+	la := LPD8806{numColors, val[:numPixels*numColors], offsets[0], offsets[1], offsets[2], offsets[3], dev, val, rp}
 
 	if spiSpeed != 0 {
-		err := la.setSPISpeed(spiSpeed)
+		err := rp.SetSPISpeed(la.dev.Fd(), spiSpeed)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't set SPI speed: %v", err)
 		}
 	}
 
 	firstReset := make([]byte, numReset)
-	_, err := dev.Write(firstReset)
+	_, err = dev.Write(firstReset)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't reset: %v", err)
 	}
@@ -38,15 +44,6 @@ func NewLPD8806(dev dev, numPixels int, numColors int, spiSpeed uint32, order in
 
 func (la *LPD8806) MaxPerChannel() int {
 	return 127
-}
-
-const (
-	SPI_IOC_MAGIC           = 'k'
-	SPI_IOC_WR_MAX_SPEED_HZ = 4
-)
-
-func (la *LPD8806) setSPISpeed(s uint32) error {
-	return ioctlUint32(la.dev.Fd(), iow(SPI_IOC_MAGIC, SPI_IOC_WR_MAX_SPEED_HZ, uintptr(0)), s)
 }
 
 func (la *LPD8806) Write() error {

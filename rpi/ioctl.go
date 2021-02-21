@@ -1,4 +1,4 @@
-package pixarray
+package rpi
 
 import (
 	"reflect"

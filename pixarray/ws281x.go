@@ -2,8 +2,7 @@ package pixarray
 
 import (
 	"fmt"
-	mmap "github.com/edsrzf/mmap-go"
-	"os"
+	rpi "github.com/Jon-Bright/ledctl/rpi"
 )
 
 type WS281x struct {
@@ -14,30 +13,19 @@ type WS281x struct {
 	b          int
 	w          int
 	pixels     []byte
-	mbox       *os.File
-	mboxSize   uint32
-	rp         *RasPiHW
-	pixHandle  uintptr
-	pixBusAddr uintptr
-	pixBuf     mmap.MMap
-	pixBufUint []uint32
-	pixBufOffs uintptr
-	dmaCb      *dmaControl
-	dmaBuf     mmap.MMap
-	dmaBufOffs uintptr
-	dma        *dmaT
-	pwmBuf     mmap.MMap
-	pwm        *pwmT
-	gpioBuf    mmap.MMap
-	gpio       *gpioT
-	cmClkBuf   mmap.MMap
-	cmClk      *cmClkT
+	pixDMA     *rpi.DMABuf
+	pixDMAUint []uint32
+	rp         *rpi.RPi
 }
 
+const (
+	LED_RESET_US = 55
+)
+
 func NewWS281x(numPixels int, numColors int, order int, freq uint, dma int, pins []int) (LEDStrip, error) {
-	rp, err := detectRPiHW()
+	rp, err := rpi.NewRPi()
 	if err != nil {
-		return nil, fmt.Errorf("couldn't detect RPi hardware: %v", err)
+		return nil, fmt.Errorf("couldn't init RPi: %v", err)
 	}
 	offsets := offsets[order]
 	wa := WS281x{
@@ -50,46 +38,59 @@ func NewWS281x(numPixels int, numColors int, order int, freq uint, dma int, pins
 		pixels:    make([]byte, numPixels*numColors),
 		rp:        rp,
 	}
-	wa.mbox, err = wa.mboxOpen()
+	bytes := wa.pwmByteCount(freq)
+	wa.pixDMA, err = rp.GetDMABuf(bytes)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't open mbox: %v", err)
+		return nil, fmt.Errorf("couldn't get DMA buffer: %v", err)
 	}
-	wa.calcMboxSize(freq)
-	wa.pixHandle, err = wa.allocMem()
+	wa.pixDMAUint = wa.pixDMA.Uint32Slice()
+	err = rp.InitDMA(dma)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't allocMem: %v", err)
-	}
-	fmt.Printf("got handle %08X\n", wa.pixHandle)
-	wa.pixBusAddr, err = wa.lockMem(wa.pixHandle)
-	if err != nil {
-		wa.freeMem(wa.pixHandle) // Ignore error
-		return nil, fmt.Errorf("couldn't lockMem: %v", err)
-	}
-	fmt.Printf("got busAddr %08X\n", wa.pixBusAddr)
-	wa.pixBuf, wa.pixBufOffs, err = wa.mapMem(wa.busToPhys(wa.pixBusAddr), int(wa.mboxSize))
-	if err != nil {
-		wa.unlockMem(wa.pixHandle) // Ignore error
-		wa.freeMem(wa.pixHandle)   // Ignore error
-		return nil, fmt.Errorf("couldn't map pixBuf: %v", err)
-	}
-	fmt.Printf("got offset %d\n", wa.pixBufOffs)
-	wa.pixBufUint = mmapToUintSlice(wa.pixBuf)
-	wa.initDmaControl()
-	err = wa.mapDmaRegisters(dma)
-	if err != nil {
-		wa.unlockMem(wa.pixHandle) // Ignore error
-		wa.freeMem(wa.pixHandle)   // Ignore error
+		rp.FreeDMABuf(wa.pixDMA) // Ignore error
 		return nil, fmt.Errorf("couldn't init registers: %v", err)
 	}
-	err = wa.initGpio(pins)
+	err = rp.InitGPIO(pins)
 	if err != nil {
-		wa.unlockMem(wa.pixHandle) // Ignore error
-		wa.freeMem(wa.pixHandle)   // Ignore error
+		rp.FreeDMABuf(wa.pixDMA) // Ignore error
 		return nil, fmt.Errorf("couldn't init GPIO: %v", err)
 	}
-	wa.initPwm(freq)
+	err = rp.InitPWM(freq, wa.pixDMA, bytes)
+	if err != nil {
+		rp.FreeDMABuf(wa.pixDMA) // Ignore error
+		return nil, fmt.Errorf("couldn't init PWM: %v", err)
+	}
 
 	return &wa, nil
+}
+
+// pwmByteCount calculates the number of bytes needed to store the data for PWM to send - three
+// bits per WS281x bit, plus enough bits to provide an appropriate reset time afterwards at the
+// given frequency. It returns that byte count.
+func (ws *WS281x) pwmByteCount(freq uint) uint {
+	// Every bit transmitted needs 3 bits of buffer, because bits are transmitted as
+	// ‾|__ (0) or ‾‾|_ (1). Each color of each pixel needs 8 "real" bits.
+	bits := uint(3 * ws.numColors * ws.numPixels * 8)
+
+	// freq is typically 800kHz, so for LED_RESET_US=55 us, this gives us
+	// ((55 * (800000 * 3)) / 1000000
+	// ((55 * 2400000) / 1000000
+	// 132000000 / 1000000
+	// 132
+	// Taking this the other way, 132 bits of buffer is 132/3=44 "real" bits. With each "real" bit
+	// taking 1/800000th of a second, this will take 44/800000ths of a second, which is
+	// 0.000055s - 55 us.
+	bits += ((LED_RESET_US * (freq * 3)) / 1000000)
+
+	// This isn't a PDP-11, so there are 8 bits in a byte
+	bytes := bits / 8
+
+	// Round up to next uint32
+	bytes -= bytes % 4
+	bytes += 4
+
+	bytes *= rpi.RPI_PWM_CHANNELS
+
+	return bytes
 }
 
 func (ws *WS281x) MaxPerChannel() int {
@@ -119,17 +120,16 @@ const (
 )
 
 func (ws *WS281x) Write() error {
-	pbOffs := (uintptr(ws.dmaCb.sourceAd) - ws.pixBusAddr) / 4
 
 	// We need to wait for DMA to be done before we start touching the buffer it's outputting
-	err := ws.waitForDMAEnd()
+	err := ws.rp.WaitForDMAEnd()
 	if err != nil {
 		return fmt.Errorf("pre-DMA wait failed: %v", err)
 	}
 
 	// TODO: channels, do properly - this just assumes both channels show the same thing
 	for c := 0; c < 2; c++ {
-		rpPos := pbOffs + uintptr(c)
+		rpPos := c
 		bitPos := 31
 		for i := 0; i < ws.numPixels; i++ {
 			for j := 0; j < ws.numColors; j++ {
@@ -139,9 +139,9 @@ func (ws *WS281x) Write() error {
 						symbol = SYMBOL_HIGH
 					}
 					for l := 2; l >= 0; l-- {
-						ws.pixBufUint[rpPos] &= ^(1 << uint(bitPos))
+						ws.pixDMAUint[rpPos] &= ^(1 << uint(bitPos))
 						if (symbol & (1 << uint(l))) != 0 {
-							ws.pixBufUint[rpPos] |= 1 << uint(bitPos)
+							ws.pixDMAUint[rpPos] |= 1 << uint(bitPos)
 						}
 						bitPos--
 						if bitPos < 0 {
@@ -153,6 +153,6 @@ func (ws *WS281x) Write() error {
 			}
 		}
 	}
-	ws.startDma()
+	ws.rp.StartDMA(ws.pixDMA)
 	return nil
 }
