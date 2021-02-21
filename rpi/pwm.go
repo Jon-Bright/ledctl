@@ -74,7 +74,7 @@ func (rp *RPi) InitPWM(freq uint, buf *DMABuf, bytes uint, pins []int) error {
 		if !ok {
 			return fmt.Errorf("invalid pin %d for PWM channel %d", pin, channel)
 		}
-		rp.gpioFunctionSet(pin, alt)
+		rp.gpioSetAltFunction(pin, alt)
 	}
 
 	if rp.pwmBuf == nil {

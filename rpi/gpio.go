@@ -3,6 +3,7 @@ package rpi
 import (
 	"fmt"
 	"log"
+	"time"
 	"unsafe"
 )
 
@@ -35,17 +36,57 @@ type gpioT struct {
 	test       uint32
 }
 
-func (rp *RPi) gpioFunctionSet(pin int, alt int) error {
+type PullMode uint
+
+const (
+	// See p101. These are GPPUD values
+	PullNone = 0
+	PullDown = 1
+	PullUp   = 2
+)
+
+func (rp *RPi) gpioSetPinFunction(pin int, fnc uint32) error {
+	if pin > 53 { // p94
+		return fmt.Errorf("pin %d not supported")
+	}
 	reg := pin / 10
 	offset := uint((pin % 10) * 3)
+	rp.gpio.fsel[reg] &= ^(0x7 << offset)
+	rp.gpio.fsel[reg] |= fnc << offset
+	return nil
+}
+
+func (rp *RPi) gpioSetInput(pin int) error {
+	return rp.gpioSetPinFunction(pin, 0)
+}
+
+func (rp *RPi) gpioSetOutput(pin int, pm PullMode) error {
+	if pm > PullUp {
+		return fmt.Errorf("%d is an invalid pull mode", pm)
+	}
+	err := rp.gpioSetPinFunction(pin, 1)
+	if err != nil {
+		return fmt.Errorf("couldn't set pin as output: %v", err)
+	}
+
+	// See p101 for the description of this procedure.
+	rp.gpio.pud = uint32(pm)
+	time.Sleep(10 * time.Microsecond) // Datasheet says to sleep for 150 cycles after setting pud
+	reg := pin / 32
+	offset := uint(pin % 32)
+	rp.gpio.pudclk[reg] = 1 << offset
+	time.Sleep(10 * time.Microsecond) // Datasheet says to sleep for 150 cycles after setting pudclk
+	rp.gpio.pud = 0
+	rp.gpio.pudclk[reg] = 0
+	return nil
+}
+
+func (rp *RPi) gpioSetAltFunction(pin int, alt int) error {
 	funcs := []uint32{4, 5, 6, 7, 3, 2} // See p92 in datasheet - these are the alt functions only
 	if alt >= len(funcs) {
 		return fmt.Errorf("%d is an invalid alt function", alt)
 	}
-
-	rp.gpio.fsel[reg] &= ^(0x7 << offset)
-	rp.gpio.fsel[reg] |= (funcs[alt]) << offset
-	return nil
+	return rp.gpioSetPinFunction(pin, funcs[alt])
 }
 
 func (rp *RPi) InitGPIO() error {
