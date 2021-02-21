@@ -93,6 +93,10 @@ func (ws *WS281x) pwmByteCount(freq uint) uint {
 	return bytes
 }
 
+func (ws *WS281x) RPi() *rpi.RPi {
+	return ws.rp
+}
+
 func (ws *WS281x) MaxPerChannel() int {
 	return 255
 }

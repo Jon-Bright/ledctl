@@ -2,6 +2,7 @@ package pixarray
 
 import (
 	"fmt"
+	rpi "github.com/Jon-Bright/ledctl/rpi"
 )
 
 const (
@@ -74,6 +75,10 @@ func (pa *PixArray) NumPixels() int {
 
 func (pa *PixArray) NumColors() int {
 	return pa.numColors
+}
+
+func (pa *PixArray) RPi() *rpi.RPi {
+	return pa.leds.RPi()
 }
 
 func (pa *PixArray) MaxPerChannel() int {

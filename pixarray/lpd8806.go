@@ -42,6 +42,10 @@ func NewLPD8806(dev dev, numPixels int, numColors int, spiSpeed uint32, order in
 	return &la, nil
 }
 
+func (la *LPD8806) RPi() *rpi.RPi {
+	return la.rp
+}
+
 func (la *LPD8806) MaxPerChannel() int {
 	return 127
 }
