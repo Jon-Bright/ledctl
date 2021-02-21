@@ -124,7 +124,7 @@ func (s *Server) createEffect(cmd, parms string, w *bufio.Writer) (effects.Effec
 		return nil, err
 	case cmd == "COLOUR" || cmd == "COLOR":
 		p := s.pa.GetPixels()[0]
-		c := fmt.Sprintf("%02x%02x%02x\n", p.R, p.G, p.B)
+		c := p.String() + "\n"
 		log.Printf("Returning %s", c)
 		w.WriteString(c)
 		err := w.Flush()
@@ -192,6 +192,10 @@ func (s *Server) runEffects() {
 			log.Fatalf("Ready to process effect, but no effect!")
 		}
 		if e != laste {
+			err := powerOn(s.pa.RPi())
+			if err != nil {
+				log.Fatalf("Failed power-on: %v", err)
+			}
 			start = time.Now()
 			e.Start(s.pa, start)
 			s.running = true
@@ -207,6 +211,14 @@ func (s *Server) runEffects() {
 			laste = nil
 			e = nil
 			s.running = false
+			p := s.pa.GetPixels()[0]
+			log.Printf("Seeing post-effect pix %v", p)
+			if p.R <= 0 && p.G <= 0 && p.B <= 0 && p.W <= 0 {
+				err := powerOff(s.pa.RPi())
+				if err != nil {
+					log.Fatalf("Failed power-off: %v", err)
+				}
+			}
 		} else {
 			laste = e
 		}

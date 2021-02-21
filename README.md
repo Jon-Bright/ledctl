@@ -4,6 +4,8 @@ A Go server to control LED strips, supporting LPD8806 and WS281x (WS2811, WS2812
 
 The WS281x support is *heavily* based on [jgarff's C version](https://github.com/jgarff/rpi_ws281x), but in contrast to the [Go bindings](https://github.com/rpi-ws281x/rpi-ws281x-go) for that library, the support here is pure Golang and doesn't use the C library. On the other hand, it only supports output via PWM, not SPI or PCM (because I didn't need them - there's nothing fundamental preventing this).
 
+Support is also included for controlling a power supply to the LEDs. I use an ATX power supply to power the LEDs, with one GPIO pin switching the ATX "power on" switch (via a transistor) and another pin receiving the ATX "power good" signal. Before the LEDs perform an effect, power is switched on. When an effect ends, if the result is all LEDs off, power is switched off. After power-on, the code waits for the "power good" signal before proceeding to talk to the LEDs.
+
 ## Usage
 
 ```
