@@ -1,7 +1,6 @@
 package rpi
 
 import (
-	"encoding/hex"
 	"fmt"
 	"log"
 	"time"
@@ -136,7 +135,6 @@ func rpiDmaCsPriority(val uint32) uint32 {
 }
 
 func (rp *RPi) StartDMA(d *DMABuf) {
-	log.Printf("DMA to do: control %v\nData:\n%s\n", d.c, hex.Dump(d.pb.buf))
 	rp.dma.cs = RPI_DMA_CS_RESET
 	time.Sleep(10 * time.Microsecond)
 
