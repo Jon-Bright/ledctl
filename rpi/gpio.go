@@ -43,10 +43,12 @@ const (
 	PullNone = 0
 	PullDown = 1
 	PullUp   = 2
+
+	pinMax = 53 // p94
 )
 
 func (rp *RPi) gpioSetPinFunction(pin int, fnc uint32) error {
-	if pin > 53 { // p94
+	if pin > pinMax {
 		return fmt.Errorf("pin %d not supported")
 	}
 	reg := pin / 10
@@ -56,11 +58,11 @@ func (rp *RPi) gpioSetPinFunction(pin int, fnc uint32) error {
 	return nil
 }
 
-func (rp *RPi) gpioSetInput(pin int) error {
+func (rp *RPi) GPIOSetInput(pin int) error {
 	return rp.gpioSetPinFunction(pin, 0)
 }
 
-func (rp *RPi) gpioSetOutput(pin int, pm PullMode) error {
+func (rp *RPi) GPIOSetOutput(pin int, pm PullMode) error {
 	if pm > PullUp {
 		return fmt.Errorf("%d is an invalid pull mode", pm)
 	}
@@ -87,6 +89,29 @@ func (rp *RPi) gpioSetAltFunction(pin int, alt int) error {
 		return fmt.Errorf("%d is an invalid alt function", alt)
 	}
 	return rp.gpioSetPinFunction(pin, funcs[alt])
+}
+
+func (rp *RPi) GPIOSetPin(pin int, val bool) error {
+	if pin > pinMax {
+		return fmt.Errorf("pin %d not supported")
+	}
+	reg := pin / 32
+	offset := uint(pin % 32)
+	if val {
+		rp.gpio.set[reg] = 1 << offset
+	} else {
+		rp.gpio.clr[reg] = 1 << offset
+	}
+	return nil
+}
+
+func (rp *RPi) GPIOGetPin(pin int) (bool, error) {
+	if pin > pinMax {
+		return false, fmt.Errorf("pin %d not supported")
+	}
+	reg := pin / 32
+	offset := uint(pin % 32)
+	return (rp.gpio.lev[reg] & (1 << offset)) != 0, nil
 }
 
 func (rp *RPi) InitGPIO() error {
