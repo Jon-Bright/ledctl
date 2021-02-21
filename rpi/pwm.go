@@ -62,10 +62,18 @@ func rpiDmaTiPerMap(val uint32) uint32 {
 	return (val & 0x1f) << 16
 }
 
-func (rp *RPi) InitPWM(freq uint, buf *DMABuf, bytes uint) error {
+func (rp *RPi) InitPWM(freq uint, buf *DMABuf, bytes uint, pins []int) error {
 	oscFreq := uint32(OSC_FREQ)
 	if rp.hw.hwType == RPI_HWVER_TYPE_PI4 {
 		oscFreq = OSC_FREQ_PI4
+	}
+
+	for channel, pin := range pins {
+		alt, ok := pwmPinToAlt[pwmPin{channel, pin}]
+		if !ok {
+			return fmt.Errorf("invalid pin %d for PWM channel %d", pin, channel)
+		}
+		rp.gpioFunctionSet(pin, alt)
 	}
 
 	if rp.pwmBuf == nil {

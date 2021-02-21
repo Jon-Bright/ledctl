@@ -48,7 +48,7 @@ func (rp *RPi) gpioFunctionSet(pin int, alt int) error {
 	return nil
 }
 
-func (rp *RPi) InitGPIO(pins []int) error {
+func (rp *RPi) InitGPIO() error {
 	var (
 		bufOffs uintptr
 		err     error
@@ -59,13 +59,5 @@ func (rp *RPi) InitGPIO(pins []int) error {
 	}
 	log.Printf("Got gpioBuf[%d], offset %d\n", len(rp.gpioBuf), bufOffs)
 	rp.gpio = (*gpioT)(unsafe.Pointer(&rp.gpioBuf[bufOffs]))
-
-	for channel, pin := range pins {
-		alt, ok := pwmPinToAlt[pwmPin{channel, pin}]
-		if !ok {
-			return fmt.Errorf("invalid pin %d for PWM channel %d", pin, channel)
-		}
-		rp.gpioFunctionSet(pin, alt)
-	}
 	return nil
 }

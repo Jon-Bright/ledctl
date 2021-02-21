@@ -49,12 +49,12 @@ func NewWS281x(numPixels int, numColors int, order int, freq uint, dma int, pins
 		rp.FreeDMABuf(wa.pixDMA) // Ignore error
 		return nil, fmt.Errorf("couldn't init registers: %v", err)
 	}
-	err = rp.InitGPIO(pins)
+	err = rp.InitGPIO()
 	if err != nil {
 		rp.FreeDMABuf(wa.pixDMA) // Ignore error
 		return nil, fmt.Errorf("couldn't init GPIO: %v", err)
 	}
-	err = rp.InitPWM(freq, wa.pixDMA, bytes)
+	err = rp.InitPWM(freq, wa.pixDMA, bytes, pins)
 	if err != nil {
 		rp.FreeDMABuf(wa.pixDMA) // Ignore error
 		return nil, fmt.Errorf("couldn't init PWM: %v", err)
