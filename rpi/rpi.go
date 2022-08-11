@@ -97,6 +97,13 @@ var rasPiVariants = map[uint32]hw{
 		vcBase:     VIDEOCORE_BASE_RPI2,
 		name:       "Pi 400 - 4GB v1.0",
 	},
+	0xC03131: {
+		hwType:     RPI_HWVER_TYPE_PI4,
+		periphBase: PERIPH_BASE_RPI4,
+		vcBase:     VIDEOCORE_BASE_RPI2,
+		name:       "Pi 400 - 4GB v1.1",
+	},
+
 	//
 	// Raspberry Pi 4
 	//
@@ -136,18 +143,49 @@ var rasPiVariants = map[uint32]hw{
 		vcBase:     VIDEOCORE_BASE_RPI2,
 		name:       "Pi 4 Model B - 4GB v1.2",
 	},
-	0xD03114: {
-		hwType:     RPI_HWVER_TYPE_PI4,
-		periphBase: PERIPH_BASE_RPI4,
-		vcBase:     VIDEOCORE_BASE_RPI2,
-		name:       "Pi 4 Model B - 8GB v1.2",
-	},
 	0xB03114: {
 		hwType:     RPI_HWVER_TYPE_PI4,
 		periphBase: PERIPH_BASE_RPI4,
 		vcBase:     VIDEOCORE_BASE_RPI2,
 		name:       "Pi 4 Model B - 2GB v1.4",
 	},
+	0xC03114: {
+		hwType:     RPI_HWVER_TYPE_PI4,
+		periphBase: PERIPH_BASE_RPI4,
+		vcBase:     VIDEOCORE_BASE_RPI2,
+		name:       "Pi 4 Model B - 4GB v1.4",
+	},
+	0xD03114: {
+		hwType:     RPI_HWVER_TYPE_PI4,
+		periphBase: PERIPH_BASE_RPI4,
+		vcBase:     VIDEOCORE_BASE_RPI2,
+		name:       "Pi 4 Model B - 8GB v1.4",
+	},
+	0xA03115: {
+		hwType:     RPI_HWVER_TYPE_PI4,
+		periphBase: PERIPH_BASE_RPI4,
+		vcBase:     VIDEOCORE_BASE_RPI2,
+		name:       "Pi 4 Model B - 1GB v1.5",
+	},
+	0xB03115: {
+		hwType:     RPI_HWVER_TYPE_PI4,
+		periphBase: PERIPH_BASE_RPI4,
+		vcBase:     VIDEOCORE_BASE_RPI2,
+		name:       "Pi 4 Model B - 2GB v1.5",
+	},
+	0xC03115: {
+		hwType:     RPI_HWVER_TYPE_PI4,
+		periphBase: PERIPH_BASE_RPI4,
+		vcBase:     VIDEOCORE_BASE_RPI2,
+		name:       "Pi 4 Model B - 4GB v1.5",
+	},
+	0xD03115: {
+		hwType:     RPI_HWVER_TYPE_PI4,
+		periphBase: PERIPH_BASE_RPI4,
+		vcBase:     VIDEOCORE_BASE_RPI2,
+		name:       "Pi 4 Model B - 8GB v1.5",
+	},
+
 	//
 	// Model B Rev 1.0
 	//
@@ -300,6 +338,12 @@ var rasPiVariants = map[uint32]hw{
 		periphBase: PERIPH_BASE_RPI,
 		vcBase:     VIDEOCORE_BASE_RPI,
 		name:       "Pi Zero W v1.1",
+	},
+	0x902120: {
+		hwType:     RPI_HWVER_TYPE_PI2,
+		periphBase: PERIPH_BASE_RPI2,
+		vcBase:     VIDEOCORE_BASE_RPI2,
+		name:       "Pi Zero 2 W v1.0",
 	},
 
 	//
